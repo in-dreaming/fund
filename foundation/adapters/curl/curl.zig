@@ -90,9 +90,10 @@ fn symbol(comptime T: type, library: Hmodule, name: [:0]const u8) ?T {
 }
 
 const Pending = struct {
+    allocator: std.mem.Allocator,
     operation: *http.HttpOperation,
     url: [:0]u8,
-    method: [:0]u8,
+    method: [:0]const u8,
     body: []u8,
     headers: [][:0]u8,
     options: http.Options,
@@ -100,9 +101,9 @@ const Pending = struct {
     client_certificate_path: ?[:0]u8 = null,
     client_key_path: ?[:0]u8 = null,
     proxy_url: ?[:0]u8 = null,
-    fn deinit(self: *Pending, allocator: std.mem.Allocator) void {
+    fn deinit(self: *Pending) void {
+        const allocator = self.allocator;
         allocator.free(self.url);
-        allocator.free(self.method);
         allocator.free(self.body);
         for (self.headers) |header| allocator.free(header);
         allocator.free(self.headers);
@@ -131,7 +132,7 @@ pub const CurlClient = struct {
         for (self.pending.items) |*pending| {
             pending.operation.cancel();
             pending.operation.deinit();
-            pending.deinit(self.allocator);
+            pending.deinit();
         }
         self.pending.deinit(self.allocator);
         self.api.close();
@@ -145,7 +146,7 @@ pub const CurlClient = struct {
     pub fn pump(self: *CurlClient) void {
         if (self.pending.items.len == 0) return;
         var pending = self.pending.orderedRemove(0);
-        defer pending.deinit(self.allocator);
+        defer pending.deinit();
         var token = pending.operation.token();
         defer token.deinit();
         if (token.isCancelled()) {
@@ -153,56 +154,77 @@ pub const CurlClient = struct {
             return;
         }
         const easy = self.api.easy_init() orelse {
-            http.finish(pending.operation, .{ .failure = .{ .category = .unavailable, .message = "curl easy handle unavailable" } });
+            http.finish(pending.operation, http.failureResult(pending.allocator, .{ .category = .unavailable, .message = "curl easy handle unavailable" }));
             return;
         };
         defer self.api.easy_cleanup(easy);
         var slist: ?*anyopaque = null;
         defer if (slist) |list| self.api.slist_free_all(list);
         for (pending.headers) |header| slist = self.api.slist_append(slist, header.ptr) orelse {
-            http.finish(pending.operation, .{ .failure = .{ .category = .resource_exhausted, .message = "curl header allocation failed" } });
+            http.finish(pending.operation, http.failureResult(pending.allocator, .{ .category = .resource_exhausted, .message = "curl header allocation failed" }));
             return;
         };
         var response = std.ArrayListUnmanaged(u8){};
-        defer response.deinit(self.allocator);
-        const context = CallbackContext{ .allocator = self.allocator, .response = &response, .limit = pending.options.response_body_limit, .cancelled = &token };
-        if (!set(self.api.easy_setopt(easy, CURLOPT_URL, pending.url.ptr)) or !set(self.api.easy_setopt(easy, CURLOPT_CUSTOMREQUEST, pending.method.ptr)) or !set(self.api.easy_setopt(easy, CURLOPT_NOSIGNAL, @as(c_long, 1))) or !set(self.api.easy_setopt(easy, CURLOPT_TIMEOUT_MS, @as(c_long, @intCast(@min(pending.options.timeout_ms, std.math.maxInt(c_long)))))) or !set(self.api.easy_setopt(easy, CURLOPT_WRITEFUNCTION, writeCallback)) or !set(self.api.easy_setopt(easy, CURLOPT_WRITEDATA, &context))) {
-            http.finish(pending.operation, .{ .failure = .{ .category = .internal, .message = "curl option setup failed" } });
+        defer response.deinit(pending.allocator);
+        var response_headers = std.ArrayListUnmanaged(http.Header){};
+        defer freeResponseHeaders(pending.allocator, &response_headers);
+        var context = CallbackContext{ .allocator = pending.allocator, .response = &response, .headers = &response_headers, .limit = pending.options.response_body_limit, .cancelled = &token };
+        if (!set(self.api.easy_setopt(easy, CURLOPT_URL, pending.url.ptr)) or !set(self.api.easy_setopt(easy, CURLOPT_CUSTOMREQUEST, pending.method.ptr)) or !set(self.api.easy_setopt(easy, CURLOPT_NOSIGNAL, @as(c_long, 1))) or !set(self.api.easy_setopt(easy, CURLOPT_TIMEOUT_MS, @as(c_long, @intCast(@min(pending.options.timeout_ms, std.math.maxInt(c_long)))))) or !set(self.api.easy_setopt(easy, CURLOPT_WRITEFUNCTION, writeCallback)) or !set(self.api.easy_setopt(easy, CURLOPT_WRITEDATA, &context)) or !set(self.api.easy_setopt(easy, CURLOPT_HEADERFUNCTION, headerCallback)) or !set(self.api.easy_setopt(easy, CURLOPT_HEADERDATA, &context))) {
+            http.finish(pending.operation, http.failureResult(pending.allocator, .{ .category = .internal, .message = "curl option setup failed" }));
             return;
         }
         if (pending.body.len != 0) {
             _ = self.api.easy_setopt(easy, CURLOPT_POSTFIELDS, pending.body.ptr);
             _ = self.api.easy_setopt(easy, CURLOPT_POSTFIELDSIZE_LARGE, @as(i64, @intCast(pending.body.len)));
         }
+        if (std.mem.eql(u8, pending.method, "HEAD")) _ = self.api.easy_setopt(easy, CURLOPT_NOBODY, @as(c_long, 1));
         if (slist != null) _ = self.api.easy_setopt(easy, CURLOPT_HTTPHEADER, slist);
         applyOptions(&self.api, easy, &pending);
         const code = self.api.easy_perform(easy);
         if (code != CURLE_OK) {
-            http.finish(pending.operation, resultForCode(code, token.isCancelled()));
+            if (context.exhausted) {
+                http.finish(pending.operation, http.failureResult(pending.allocator, .{ .category = .resource_exhausted, .native_code = code, .message = "response limit or allocation exhausted" }));
+            } else {
+                http.finish(pending.operation, resultForCode(pending.allocator, code, token.isCancelled()));
+            }
             return;
         }
         var status: c_long = 0;
         _ = self.api.easy_getinfo(easy, CURLINFO_RESPONSE_CODE, &status);
-        const body = foundation.memory.SharedBuffer.initCopy(self.allocator, response.items, .network) catch {
-            http.finish(pending.operation, .{ .failure = .{ .category = .resource_exhausted, .message = "response allocation failed" } });
+        const body = foundation.memory.SharedBuffer.initCopy(pending.allocator, response.items, .network) catch {
+            http.finish(pending.operation, http.failureResult(pending.allocator, .{ .category = .resource_exhausted, .message = "response allocation failed" }));
             return;
         };
-        http.finish(pending.operation, .{ .response = .{ .status = @intCast(@max(status, 0)), .body = body, .allocator = self.allocator } });
+        const owned_headers = response_headers.toOwnedSlice(pending.allocator) catch {
+            var discarded = body;
+            discarded.release();
+            http.finish(pending.operation, http.failureResult(pending.allocator, .{ .category = .resource_exhausted, .message = "response header allocation failed" }));
+            return;
+        };
+        http.finish(pending.operation, .{ .response = .{ .status = @intCast(@max(status, 0)), .headers = owned_headers, .body = body, .allocator = pending.allocator } });
     }
     fn start(raw: ?*anyopaque, allocator: std.mem.Allocator, request: http.Request, options: http.Options, completion: http.Completion, userdata: ?*anyopaque) http.StartError!*http.HttpOperation {
         const self: *CurlClient = @ptrCast(@alignCast(raw.?));
         const header_lines = try copyHeaders(allocator, request.headers);
         errdefer freeHeaders(allocator, header_lines);
-        var pending = Pending{ .operation = try http.createOperation(allocator, options, completion, userdata), .url = try allocator.dupeZ(u8, request.url), .method = try allocator.dupeZ(u8, @tagName(request.method)), .body = try allocator.dupe(u8, request.body), .headers = header_lines, .options = options };
-        errdefer {
-            pending.operation.deinit();
-            pending.deinit(allocator);
-        }
+        const url = try allocator.dupeZ(u8, request.url);
+        errdefer allocator.free(url);
+        const body = try allocator.dupe(u8, request.body);
+        errdefer allocator.free(body);
+        var pending = Pending{ .allocator = allocator, .operation = undefined, .url = url, .method = methodName(request.method), .body = body, .headers = header_lines, .options = options };
         if (options.tls.ca_bundle_path) |value| pending.ca_bundle_path = try allocator.dupeZ(u8, value);
+        errdefer if (pending.ca_bundle_path) |value| allocator.free(value);
         if (options.tls.client_certificate_path) |value| pending.client_certificate_path = try allocator.dupeZ(u8, value);
+        errdefer if (pending.client_certificate_path) |value| allocator.free(value);
         if (options.tls.client_key_path) |value| pending.client_key_path = try allocator.dupeZ(u8, value);
+        errdefer if (pending.client_key_path) |value| allocator.free(value);
         if (options.proxy == .url) pending.proxy_url = try allocator.dupeZ(u8, options.proxy.url);
-        try self.pending.append(self.allocator, pending);
+        errdefer if (pending.proxy_url) |value| allocator.free(value);
+        pending.operation = try http.createOperation(allocator, options, completion, userdata);
+        self.pending.append(self.allocator, pending) catch {
+            http.abandon(pending.operation);
+            return error.OutOfMemory;
+        };
         return pending.operation;
     }
     const vtable = http.VTable{ .start = start };
@@ -223,21 +245,75 @@ fn freeHeaders(allocator: std.mem.Allocator, headers: []const [:0]u8) void {
     allocator.free(headers);
 }
 
-const CallbackContext = struct { allocator: std.mem.Allocator, response: *std.ArrayListUnmanaged(u8), limit: usize, cancelled: *foundation.cancellation.Token };
+fn methodName(method: http.Method) [:0]const u8 {
+    return switch (method) {
+        .get => "GET",
+        .head => "HEAD",
+        .post => "POST",
+        .put => "PUT",
+        .patch => "PATCH",
+        .delete => "DELETE",
+        .options => "OPTIONS",
+    };
+}
+
+const CallbackContext = struct { allocator: std.mem.Allocator, response: *std.ArrayListUnmanaged(u8), headers: *std.ArrayListUnmanaged(http.Header), limit: usize, cancelled: *foundation.cancellation.Token, exhausted: bool = false };
 fn writeCallback(bytes: [*]u8, size: usize, count: usize, raw: ?*anyopaque) callconv(.c) usize {
-    const context: *const CallbackContext = @ptrCast(@alignCast(raw.?));
+    const context: *CallbackContext = @ptrCast(@alignCast(raw.?));
     const len = size *| count;
-    if (context.cancelled.isCancelled() or len > context.limit -| context.response.items.len) return 0;
-    context.response.appendSlice(context.allocator, bytes[0..len]) catch return 0;
+    if (context.cancelled.isCancelled()) return 0;
+    if (len > context.limit -| context.response.items.len) {
+        context.exhausted = true;
+        return 0;
+    }
+    context.response.appendSlice(context.allocator, bytes[0..len]) catch {
+        context.exhausted = true;
+        return 0;
+    };
     return len;
+}
+fn headerCallback(bytes: [*]u8, size: usize, count: usize, raw: ?*anyopaque) callconv(.c) usize {
+    const context: *CallbackContext = @ptrCast(@alignCast(raw.?));
+    const len = size *| count;
+    const line = std.mem.trim(u8, bytes[0..len], "\r\n");
+    if (std.mem.startsWith(u8, line, "HTTP/")) {
+        freeResponseHeaders(context.allocator, context.headers);
+        return len;
+    }
+    if (line.len == 0) return len;
+    const colon = std.mem.indexOfScalar(u8, line, ':') orelse return len;
+    const name = context.allocator.dupe(u8, std.mem.trim(u8, line[0..colon], " \t")) catch {
+        context.exhausted = true;
+        return 0;
+    };
+    errdefer context.allocator.free(name);
+    const value = context.allocator.dupe(u8, std.mem.trim(u8, line[colon + 1 ..], " \t")) catch {
+        context.exhausted = true;
+        return 0;
+    };
+    context.headers.append(context.allocator, .{ .name = name, .value = value }) catch {
+        context.allocator.free(name);
+        context.allocator.free(value);
+        context.exhausted = true;
+        return 0;
+    };
+    return len;
+}
+fn freeResponseHeaders(allocator: std.mem.Allocator, headers: *std.ArrayListUnmanaged(http.Header)) void {
+    for (headers.items) |header| {
+        allocator.free(@constCast(header.name));
+        allocator.free(@constCast(header.value));
+    }
+    headers.deinit(allocator);
+    headers.* = .empty;
 }
 fn set(code: CURLcode) bool {
     return code == CURLE_OK;
 }
 fn applyOptions(api: *const Api, easy: CURL, pending: *const Pending) void {
     const options = pending.options;
-    _ = api.easy_setopt(easy, CURLOPT_SSL_VERIFYPEER, @as(c_long, if (options.tls.verify_peer) 1 else 0));
-    _ = api.easy_setopt(easy, CURLOPT_SSL_VERIFYHOST, @as(c_long, if (options.tls.verify_host) 2 else 0));
+    _ = api.easy_setopt(easy, CURLOPT_SSL_VERIFYPEER, @as(c_long, 1));
+    _ = api.easy_setopt(easy, CURLOPT_SSL_VERIFYHOST, @as(c_long, 2));
     switch (options.redirects) {
         .deny => _ = api.easy_setopt(easy, CURLOPT_FOLLOWLOCATION, @as(c_long, 0)),
         .follow => |limit| {
@@ -254,13 +330,14 @@ fn applyOptions(api: *const Api, easy: CURL, pending: *const Pending) void {
     if (pending.client_certificate_path) |path| _ = api.easy_setopt(easy, CURLOPT_SSLCERT, path.ptr);
     if (pending.client_key_path) |path| _ = api.easy_setopt(easy, CURLOPT_SSLKEY, path.ptr);
 }
-fn resultForCode(code: CURLcode, cancelled: bool) http.Result {
+fn resultForCode(allocator: std.mem.Allocator, code: CURLcode, cancelled: bool) http.Result {
     if (cancelled or code == CURLE_ABORTED_BY_CALLBACK) return .cancelled;
-    return .{ .failure = .{ .category = if (code == CURLE_OPERATION_TIMEDOUT) .timeout else .network, .native_code = code, .message = "curl transfer failed" } };
+    return http.failureResult(allocator, .{ .category = if (code == CURLE_OPERATION_TIMEDOUT) .timeout else .network, .native_code = code, .message = "curl transfer failed" });
 }
 
 test "curl adapter preserves native error classification" {
-    const result = resultForCode(CURLE_OPERATION_TIMEDOUT, false);
+    var result = resultForCode(std.testing.allocator, CURLE_OPERATION_TIMEDOUT, false);
+    defer result.deinit();
     switch (result) {
         .failure => |failure| {
             try std.testing.expectEqual(errors.ErrorCategory.timeout, failure.category);

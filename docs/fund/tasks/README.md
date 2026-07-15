@@ -23,3 +23,4 @@ Use [`setup.md`](setup.md) together with exactly one task document. The numeric 
 | 16 | [Deterministic testing and fault injection](16-testing-faults.md) | 01-15 |
 | 17 | [Build profiles, CI, and acceptance integration](17-profiles-ci-acceptance.md) | 07, 08, 10-16 |
 | 18 | [Evidence-gated platform optimization](18-platform-optimization-gate.md) | 17 |
+| 19 | [Platform runtime acceptance closure](19-platform-runtime-acceptance.md) | 09, 11, 15, 17, 18 |

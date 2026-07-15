@@ -80,8 +80,19 @@ const CBufferBridge = struct {
 /// Returns a C-owned clone. `fd_buffer_release` releases the clone exactly once.
 pub fn sharedBufferToC(allocator: std.mem.Allocator, buffer: memory.SharedBuffer) !Buffer {
     const bridge = try allocator.create(BufferBridge);
+    errdefer allocator.destroy(bridge);
     bridge.* = .{ .allocator = allocator, .buffer = try buffer.clone() };
-    const bytes = try bridge.buffer.mutableBytes();
+    errdefer bridge.buffer.release();
+    const bytes = bridge.buffer.mutableBytes() catch |err| switch (err) {
+        error.ReadOnly => blk: {
+            const source = try bridge.buffer.bytes();
+            const mutable_copy = try memory.SharedBuffer.initCopy(allocator, source, .c_abi);
+            bridge.buffer.release();
+            bridge.buffer = mutable_copy;
+            break :blk try bridge.buffer.mutableBytes();
+        },
+        else => return err,
+    };
     return .{ .data = bytes.ptr, .length = bytes.len, .release = BufferBridge.release, .release_userdata = bridge };
 }
 fn hasField(comptime T: type, supplied: u32, comptime field: []const u8) bool {
@@ -169,4 +180,21 @@ test "extensible structs accept known prefixes and ignore future tails" {
     executor.struct_version = 2;
     try std.testing.expectEqual(ErrorCode.invalid_argument, fd_executor_schedule(&executor, Probe.call, &probe));
     try std.testing.expectEqual(@as(usize, 2), probe.calls);
+}
+
+test "C buffer conversion handles read-only storage and every allocation failure" {
+    const Probe = struct {
+        fn release(_: ?*anyopaque, bytes: []u8) void {
+            std.testing.allocator.free(bytes);
+        }
+        fn convert(allocator: std.mem.Allocator, source: memory.SharedBuffer) !void {
+            var output = try sharedBufferToC(allocator, source);
+            try std.testing.expectEqualStrings("readonly", output.data.?[0..output.length]);
+            try std.testing.expectEqual(ErrorCode.ok, fd_buffer_release(&output));
+        }
+    };
+    const bytes = try std.testing.allocator.dupe(u8, "readonly");
+    var source = try memory.SharedBuffer.adopt(std.testing.allocator, bytes, .read_only, .c_abi, Probe.release, null, null, .{});
+    defer source.release();
+    try std.testing.checkAllAllocationFailures(std.testing.allocator, Probe.convert, .{source});
 }

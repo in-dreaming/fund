@@ -133,10 +133,24 @@ pub fn build(b: *std.Build) void {
     const fixture_plugin = b.addLibrary(.{ .name = "foundation_fixture_plugin", .root_module = fixture_plugin_module, .linkage = .dynamic });
     cabi_test_step.dependOn(&fixture_plugin.step);
 
+    const plugin_lifecycle_tests = b.addExecutable(.{
+        .name = "plugin_lifecycle",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tests/plugin_lifecycle.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+    });
+    plugin_lifecycle_tests.root_module.addImport("foundation", foundation);
+    const run_plugin_lifecycle = b.addRunArtifact(plugin_lifecycle_tests);
+    run_plugin_lifecycle.addArtifactArg(fixture_plugin);
+    cabi_test_step.dependOn(&run_plugin_lifecycle.step);
+
     const tests = b.addTest(.{ .root_module = foundation });
     const run_tests = b.addRunArtifact(tests);
     const test_step = b.step("test", "Run Foundation tests");
     test_step.dependOn(&run_tests.step);
+    test_step.dependOn(&run_plugin_lifecycle.step);
 
     const benchmark = b.addExecutable(.{
         .name = "foundation_benchmark",

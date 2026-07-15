@@ -4,6 +4,7 @@ const foundation = @import("foundation");
 const executor_api = foundation.executor;
 const filesystem = foundation.filesystem;
 const time = foundation.time;
+const shutdown = foundation.shutdown;
 
 const NativeLoop = opaque {};
 const NativeTimer = opaque {};
@@ -26,8 +27,10 @@ extern fn fd_uv_timer_cancel(*NativeTimer) void;
 extern fn fd_uv_watch_start(*NativeLoop, ?*anyopaque, WatchCall, [*:0]const u8, c_uint) ?*NativeWatch;
 extern fn fd_uv_watch_stop(*NativeWatch) void;
 extern fn fd_uv_tcp_listen(*NativeLoop, ?*anyopaque, AcceptCall, *u16) ?*NativeListener;
+extern fn fd_uv_pipe_listen(*NativeLoop, ?*anyopaque, AcceptCall, [*:0]const u8) ?*NativeListener;
 extern fn fd_uv_tcp_listener_close(*NativeListener) void;
 extern fn fd_uv_tcp_connect(*NativeLoop, ?*anyopaque, ConnectCall, u16) void;
+extern fn fd_uv_pipe_connect(*NativeLoop, ?*anyopaque, ConnectCall, [*:0]const u8) void;
 extern fn fd_uv_tcp_stream_set_context(*NativeStream, ?*anyopaque) void;
 extern fn fd_uv_tcp_stream_read(*NativeStream, ReadCall) c_int;
 extern fn fd_uv_tcp_stream_close(*NativeStream) void;
@@ -91,6 +94,16 @@ pub const Loop = struct {
         self.unlock();
         fd_uv_loop_stop(self.native);
     }
+    pub fn registerShutdown(self: *Loop, coordinator: *shutdown.ShutdownCoordinator, order: u32) !void {
+        try coordinator.register(.{ .phase = .stop_accepting, .order = order, .callback = shutdownLoop, .userdata = self });
+    }
+    fn shutdownLoop(raw: ?*anyopaque, _: shutdown.ShutdownMode, deadline: ?time.MonotonicInstant) shutdown.ParticipantResult {
+        const self: *Loop = @ptrCast(@alignCast(raw.?));
+        self.close();
+        if (!self.pump()) return .complete;
+        _ = deadline;
+        return .pending;
+    }
     fn submit(raw: ?*anyopaque, task: executor_api.Task) executor_api.SubmitError!void {
         const self: *Loop = @ptrCast(@alignCast(raw.?));
         self.lock();
@@ -128,7 +141,8 @@ pub const Timer = struct {
     completion: executor_api.Executor,
     task: executor_api.Task,
     native: ?*NativeTimer = null,
-    fired: bool = false,
+    closing: bool = false,
+    references: usize = 2,
     pub fn schedule(allocator: std.mem.Allocator, loop: *Loop, delay: time.Duration, completion: executor_api.Executor, task: executor_api.Task) Error!*Timer {
         const result = allocator.create(Timer) catch return error.OutOfMemory;
         result.* = .{ .allocator = allocator, .completion = completion, .task = task };
@@ -141,17 +155,37 @@ pub const Timer = struct {
     }
     /// May be called once by the loop owner before the timer fires.
     pub fn cancel(self: *Timer) void {
-        if (self.native) |native| fd_uv_timer_cancel(native) else return;
-        self.native = null;
-        self.task.discard(self.task.context);
-        self.allocator.destroy(self);
+        if (self.closing) return;
+        self.closing = true;
+        if (self.native) |native| {
+            fd_uv_timer_cancel(native);
+            self.native = null;
+            self.task.discard(self.task.context);
+            self.release();
+        }
+        self.release();
     }
     fn onTimer(raw: ?*anyopaque) callconv(.c) void {
         const self: *Timer = @ptrCast(@alignCast(raw.?));
         self.native = null;
-        self.fired = true;
-        self.completion.submit(self.task) catch self.task.discard(self.task.context);
-        self.allocator.destroy(self);
+        self.references += 1;
+        const delivery = executor_api.Task{ .run = runDelivery, .discard = discardDelivery, .context = self };
+        self.completion.submit(delivery) catch delivery.discard(delivery.context);
+        self.release();
+    }
+    fn runDelivery(raw: ?*anyopaque) void {
+        const self: *Timer = @ptrCast(@alignCast(raw.?));
+        if (self.closing) self.task.discard(self.task.context) else self.task.run(self.task.context);
+        self.release();
+    }
+    fn discardDelivery(raw: ?*anyopaque) void {
+        const self: *Timer = @ptrCast(@alignCast(raw.?));
+        self.task.discard(self.task.context);
+        self.release();
+    }
+    fn release(self: *Timer) void {
+        self.references -= 1;
+        if (self.references == 0) self.allocator.destroy(self);
     }
 };
 
@@ -165,6 +199,8 @@ pub const Watch = struct {
     callback: WatchCallback,
     userdata: ?*anyopaque,
     native: ?*NativeWatch,
+    closing: bool = false,
+    references: usize = 1,
     pub fn start(allocator: std.mem.Allocator, loop: *Loop, path: [*:0]const u8, recursive: bool, completion: executor_api.Executor, callback: WatchCallback, userdata: ?*anyopaque) Error!*Watch {
         const self = allocator.create(Watch) catch return error.OutOfMemory;
         self.* = .{ .allocator = allocator, .completion = completion, .callback = callback, .userdata = userdata, .native = null };
@@ -175,9 +211,11 @@ pub const Watch = struct {
         return self;
     }
     pub fn deinit(self: *Watch) void {
+        if (self.closing) return;
+        self.closing = true;
         if (self.native) |native| fd_uv_watch_stop(native);
         self.native = null;
-        self.allocator.destroy(self);
+        self.release();
     }
     const Delivery = struct {
         allocator: std.mem.Allocator,
@@ -185,15 +223,18 @@ pub const Watch = struct {
         userdata: ?*anyopaque,
         path: []u8,
         event: filesystem.WatchEventKind,
+        owner: *Watch,
         fn run(raw: ?*anyopaque) void {
             const self: *Delivery = @ptrCast(@alignCast(raw.?));
             defer self.allocator.free(self.path);
             defer self.allocator.destroy(self);
-            self.callback(self.userdata, .{ .kind = self.event, .path = self.path });
+            if (!self.owner.closing) self.callback(self.userdata, .{ .kind = self.event, .path = self.path });
+            self.owner.release();
         }
         fn discard(raw: ?*anyopaque) void {
             const self: *Delivery = @ptrCast(@alignCast(raw.?));
             self.allocator.free(self.path);
+            self.owner.release();
             self.allocator.destroy(self);
         }
     };
@@ -205,13 +246,21 @@ pub const Watch = struct {
             return;
         };
         const event: filesystem.WatchEventKind = if (status < 0) .rescan_required else if ((events & 1) != 0) .renamed else .modified;
-        delivery.* = .{ .allocator = self.allocator, .callback = self.callback, .userdata = self.userdata, .path = path, .event = event };
+        self.references += 1;
+        delivery.* = .{ .allocator = self.allocator, .callback = self.callback, .userdata = self.userdata, .path = path, .event = event, .owner = self };
         self.completion.submit(.{ .run = Delivery.run, .discard = Delivery.discard, .context = delivery }) catch Delivery.discard(delivery);
+    }
+    fn release(self: *Watch) void {
+        self.references -= 1;
+        if (self.references == 0) self.allocator.destroy(self);
     }
 };
 
 pub const LocalEndpoint = struct { port: u16 };
+pub const PipeEndpoint = struct { name: [:0]const u8 };
 pub const StreamError = error{ Closed, ResourceExhausted, Io };
+pub const WriteResult = struct { category: ?errors.ErrorCategory = null, native_code: i64 = 0 };
+pub const WriteCallback = *const fn (?*anyopaque, WriteResult) void;
 pub const ReadCallback = *const fn (?*anyopaque, []const u8, ?errors.ErrorCategory) void;
 pub const AcceptCallback = *const fn (?*anyopaque, *Stream) void;
 pub const ConnectCallback = *const fn (?*anyopaque, ?*Stream, ?errors.ErrorCategory) void;
@@ -229,6 +278,7 @@ pub const Stream = struct {
     read_userdata: ?*anyopaque,
     max_write_bytes: usize,
     closed: bool = false,
+    references: usize = 1,
 
     fn init(allocator: std.mem.Allocator, native: *NativeStream, completion: executor_api.Executor, read_callback: ReadCallback, userdata: ?*anyopaque, max_write_bytes: usize) Error!*Stream {
         const self = allocator.create(Stream) catch return error.OutOfMemory;
@@ -240,29 +290,40 @@ pub const Stream = struct {
         }
         return self;
     }
-    pub fn write(self: *Stream, bytes: []const u8, completion: executor_api.Executor, task: executor_api.Task) StreamError!void {
+    pub fn write(self: *Stream, bytes: []const u8, completion: executor_api.Executor, callback: WriteCallback, userdata: ?*anyopaque) StreamError!void {
         if (self.closed) return error.Closed;
         if (bytes.len > self.max_write_bytes) return error.ResourceExhausted;
         const state = self.allocator.create(Write) catch return error.ResourceExhausted;
-        state.* = .{ .allocator = self.allocator, .completion = completion, .task = task };
+        state.* = .{ .allocator = self.allocator, .completion = completion, .callback = callback, .userdata = userdata };
         if (fd_uv_tcp_stream_write(self.native, bytes.ptr, bytes.len, state, Write.done) != 0) {
             self.allocator.destroy(state);
             return error.Io;
         }
     }
     pub fn deinit(self: *Stream) void {
-        if (!self.closed) fd_uv_tcp_stream_close(self.native);
+        if (self.closed) return;
+        fd_uv_tcp_stream_close(self.native);
         self.closed = true;
-        self.allocator.destroy(self);
+        self.release();
     }
     const Write = struct {
         allocator: std.mem.Allocator,
         completion: executor_api.Executor,
-        task: executor_api.Task,
+        callback: WriteCallback,
+        userdata: ?*anyopaque,
+        result: WriteResult = .{},
         fn done(raw: ?*anyopaque, status: c_int) callconv(.c) void {
             const self: *Write = @ptrCast(@alignCast(raw.?));
-            _ = status;
-            self.completion.submit(self.task) catch self.task.discard(self.task.context);
+            self.result = .{ .category = if (status < 0) .io else null, .native_code = status };
+            self.completion.submit(.{ .run = run, .discard = discard, .context = self }) catch discard(self);
+        }
+        fn run(raw: ?*anyopaque) void {
+            const self: *Write = @ptrCast(@alignCast(raw.?));
+            self.callback(self.userdata, self.result);
+            self.allocator.destroy(self);
+        }
+        fn discard(raw: ?*anyopaque) void {
+            const self: *Write = @ptrCast(@alignCast(raw.?));
             self.allocator.destroy(self);
         }
     };
@@ -272,15 +333,18 @@ pub const Stream = struct {
         userdata: ?*anyopaque,
         bytes: []u8,
         category: ?errors.ErrorCategory,
+        owner: *Stream,
         fn run(raw: ?*anyopaque) void {
             const self: *Read = @ptrCast(@alignCast(raw.?));
             defer self.allocator.free(self.bytes);
             defer self.allocator.destroy(self);
-            self.callback(self.userdata, self.bytes, self.category);
+            if (!self.owner.closed) self.callback(self.userdata, self.bytes, self.category);
+            self.owner.release();
         }
         fn discard(raw: ?*anyopaque) void {
             const self: *Read = @ptrCast(@alignCast(raw.?));
             self.allocator.free(self.bytes);
+            self.owner.release();
             self.allocator.destroy(self);
         }
     };
@@ -291,8 +355,13 @@ pub const Stream = struct {
             self.allocator.free(copy);
             return;
         };
-        delivery.* = .{ .allocator = self.allocator, .callback = self.read_callback, .userdata = self.read_userdata, .bytes = copy, .category = if (status < 0) .io else null };
+        self.references += 1;
+        delivery.* = .{ .allocator = self.allocator, .callback = self.read_callback, .userdata = self.read_userdata, .bytes = copy, .category = if (status < 0) .io else null, .owner = self };
         self.completion.submit(.{ .run = Read.run, .discard = Read.discard, .context = delivery }) catch Read.discard(delivery);
+    }
+    fn release(self: *Stream) void {
+        self.references -= 1;
+        if (self.references == 0) self.allocator.destroy(self);
     }
 };
 
@@ -307,6 +376,8 @@ pub const Listener = struct {
     read_callback: ReadCallback,
     max_write_bytes: usize,
     port: u16 = 0,
+    closing: bool = false,
+    references: usize = 1,
     pub fn listen(allocator: std.mem.Allocator, loop: *Loop, completion: executor_api.Executor, accept_callback: AcceptCallback, userdata: ?*anyopaque, read_callback: ReadCallback, max_write_bytes: usize) Error!*Listener {
         const self = allocator.create(Listener) catch return error.OutOfMemory;
         var port: u16 = 0;
@@ -318,19 +389,36 @@ pub const Listener = struct {
         self.port = port;
         return self;
     }
+    pub fn listenPipe(allocator: std.mem.Allocator, loop: *Loop, pipe_endpoint: PipeEndpoint, completion: executor_api.Executor, accept_callback: AcceptCallback, userdata: ?*anyopaque, read_callback: ReadCallback, max_write_bytes: usize) Error!*Listener {
+        const self = allocator.create(Listener) catch return error.OutOfMemory;
+        self.* = .{ .allocator = allocator, .native = undefined, .completion = completion, .accept_callback = accept_callback, .userdata = userdata, .read_callback = read_callback, .max_write_bytes = max_write_bytes };
+        self.native = fd_uv_pipe_listen(loop.native, self, onAccept, pipe_endpoint.name.ptr) orelse {
+            allocator.destroy(self);
+            return error.Io;
+        };
+        return self;
+    }
     pub fn endpoint(self: *const Listener) LocalEndpoint {
         return .{ .port = self.port };
     }
     pub fn deinit(self: *Listener) void {
+        if (self.closing) return;
+        self.closing = true;
         fd_uv_tcp_listener_close(self.native);
-        self.allocator.destroy(self);
+        self.release();
     }
     const Accept = struct {
         listener: *Listener,
         native: *NativeStream,
         fn run(raw: ?*anyopaque) void {
             const self: *Accept = @ptrCast(@alignCast(raw.?));
-            defer self.listener.allocator.destroy(self);
+            const allocator = self.listener.allocator;
+            defer allocator.destroy(self);
+            defer self.listener.release();
+            if (self.listener.closing) {
+                fd_uv_tcp_stream_close(self.native);
+                return;
+            }
             const stream = Stream.init(self.listener.allocator, self.native, self.listener.completion, self.listener.read_callback, self.listener.userdata, self.listener.max_write_bytes) catch {
                 fd_uv_tcp_stream_close(self.native);
                 return;
@@ -340,7 +428,9 @@ pub const Listener = struct {
         fn discard(raw: ?*anyopaque) void {
             const self: *Accept = @ptrCast(@alignCast(raw.?));
             fd_uv_tcp_stream_close(self.native);
-            self.listener.allocator.destroy(self);
+            const allocator = self.listener.allocator;
+            self.listener.release();
+            allocator.destroy(self);
         }
     };
     fn onAccept(raw: ?*anyopaque, native: ?*NativeStream, status: c_int) callconv(.c) void {
@@ -350,8 +440,13 @@ pub const Listener = struct {
             fd_uv_tcp_stream_close(native.?);
             return;
         };
+        self.references += 1;
         delivery.* = .{ .listener = self, .native = native.? };
         self.completion.submit(.{ .run = Accept.run, .discard = Accept.discard, .context = delivery }) catch Accept.discard(delivery);
+    }
+    fn release(self: *Listener) void {
+        self.references -= 1;
+        if (self.references == 0) self.allocator.destroy(self);
     }
 };
 
@@ -361,6 +456,11 @@ pub fn connect(allocator: std.mem.Allocator, loop: *Loop, endpoint: LocalEndpoin
     const state = allocator.create(Connect) catch return error.OutOfMemory;
     state.* = .{ .allocator = allocator, .completion = completion, .callback = callback, .userdata = userdata, .read_callback = read_callback, .max_write_bytes = max_write_bytes };
     fd_uv_tcp_connect(loop.native, state, Connect.done, endpoint.port);
+}
+pub fn connectPipe(allocator: std.mem.Allocator, loop: *Loop, endpoint: PipeEndpoint, completion: executor_api.Executor, callback: ConnectCallback, userdata: ?*anyopaque, read_callback: ReadCallback, max_write_bytes: usize) Error!void {
+    const state = allocator.create(Connect) catch return error.OutOfMemory;
+    state.* = .{ .allocator = allocator, .completion = completion, .callback = callback, .userdata = userdata, .read_callback = read_callback, .max_write_bytes = max_write_bytes };
+    fd_uv_pipe_connect(loop.native, state, Connect.done, endpoint.name.ptr);
 }
 const Connect = struct {
     allocator: std.mem.Allocator,
@@ -451,10 +551,10 @@ test "loopback TCP transfers bytes through selected executor" {
             const self: *@This() = @ptrCast(@alignCast(raw.?));
             if (category == null and std.mem.eql(u8, bytes, "ping")) self.reads += 1;
         }
-        fn wrote(raw: ?*anyopaque) void {
+        fn wrote(raw: ?*anyopaque, result: WriteResult) void {
+            if (result.category != null) return;
             @as(*@This(), @ptrCast(@alignCast(raw.?))).writes += 1;
         }
-        fn discarded(_: ?*anyopaque) void {}
     };
     var loop = try Loop.init(std.testing.allocator);
     var probe = Probe{};
@@ -465,11 +565,90 @@ test "loopback TCP transfers bytes through selected executor" {
     while (probe.client == null and attempts < 32) : (attempts += 1) _ = loop.pump();
     try std.testing.expect(probe.client != null);
     try std.testing.expect(probe.server != null);
-    try probe.client.?.write("ping", immediate.executor(), .{ .run = Probe.wrote, .discard = Probe.discarded, .context = &probe });
+    try probe.client.?.write("ping", immediate.executor(), Probe.wrote, &probe);
     attempts = 0;
     while (probe.reads == 0 and attempts < 32) : (attempts += 1) _ = loop.pump();
     try std.testing.expectEqual(@as(usize, 1), probe.reads);
     try std.testing.expectEqual(@as(usize, 1), probe.writes);
+    probe.client.?.deinit();
+    probe.server.?.deinit();
+    listener.deinit();
+    _ = loop.pump();
+    loop.deinit();
+}
+
+test "queued accept is reclaimed without callback after listener teardown" {
+    const Probe = struct {
+        accepted_count: usize = 0,
+        client: ?*Stream = null,
+        fn accepted(raw: ?*anyopaque, stream: *Stream) void {
+            const self: *@This() = @ptrCast(@alignCast(raw.?));
+            self.accepted_count += 1;
+            stream.deinit();
+        }
+        fn connected(raw: ?*anyopaque, stream: ?*Stream, category: ?errors.ErrorCategory) void {
+            if (category == null) @as(*@This(), @ptrCast(@alignCast(raw.?))).client = stream;
+        }
+        fn read(_: ?*anyopaque, _: []const u8, _: ?errors.ErrorCategory) void {}
+    };
+    var loop = try Loop.init(std.testing.allocator);
+    var delivery = executor_api.TestExecutor.init(std.testing.allocator);
+    defer delivery.deinit();
+    var immediate = executor_api.ImmediateExecutor{};
+    var probe = Probe{};
+    const listener = try Listener.listen(std.testing.allocator, loop, delivery.executor(), Probe.accepted, &probe, Probe.read, 64);
+    try connect(std.testing.allocator, loop, listener.endpoint(), immediate.executor(), Probe.connected, &probe, Probe.read, 64);
+    var attempts: usize = 0;
+    while (probe.client == null and attempts < 32) : (attempts += 1) _ = loop.pump();
+    try std.testing.expect(probe.client != null);
+    listener.deinit();
+    _ = delivery.pump();
+    try std.testing.expectEqual(@as(usize, 0), probe.accepted_count);
+    probe.client.?.deinit();
+    _ = loop.pump();
+    loop.deinit();
+}
+
+test "named pipe supports partial IO and bounded writes" {
+    const Probe = struct {
+        server: ?*Stream = null,
+        client: ?*Stream = null,
+        bytes: [32]u8 = undefined,
+        length: usize = 0,
+        writes: usize = 0,
+        fn accepted(raw: ?*anyopaque, stream: *Stream) void {
+            @as(*@This(), @ptrCast(@alignCast(raw.?))).server = stream;
+        }
+        fn connected(raw: ?*anyopaque, stream: ?*Stream, category: ?errors.ErrorCategory) void {
+            if (category == null) @as(*@This(), @ptrCast(@alignCast(raw.?))).client = stream;
+        }
+        fn read(raw: ?*anyopaque, bytes: []const u8, category: ?errors.ErrorCategory) void {
+            if (category != null) return;
+            const self: *@This() = @ptrCast(@alignCast(raw.?));
+            const amount = @min(bytes.len, self.bytes.len - self.length);
+            @memcpy(self.bytes[self.length .. self.length + amount], bytes[0..amount]);
+            self.length += amount;
+        }
+        fn wrote(raw: ?*anyopaque, result: WriteResult) void {
+            if (result.category == null) @as(*@This(), @ptrCast(@alignCast(raw.?))).writes += 1;
+        }
+    };
+    var loop = try Loop.init(std.testing.allocator);
+    var immediate = executor_api.ImmediateExecutor{};
+    var probe = Probe{};
+    const endpoint = PipeEndpoint{ .name = "\\\\.\\pipe\\foundation-libuv-partial-io" };
+    const listener = try Listener.listenPipe(std.testing.allocator, loop, endpoint, immediate.executor(), Probe.accepted, &probe, Probe.read, 8);
+    try connectPipe(std.testing.allocator, loop, endpoint, immediate.executor(), Probe.connected, &probe, Probe.read, 8);
+    var attempts: usize = 0;
+    while (probe.client == null and attempts < 32) : (attempts += 1) _ = loop.pump();
+    try std.testing.expect(probe.client != null and probe.server != null);
+    try std.testing.expectError(error.ResourceExhausted, probe.client.?.write("123456789", immediate.executor(), Probe.wrote, &probe));
+    try probe.client.?.write("part-", immediate.executor(), Probe.wrote, &probe);
+    try probe.client.?.write("ial", immediate.executor(), Probe.wrote, &probe);
+    attempts = 0;
+    while ((probe.length < 8 or probe.writes < 2) and attempts < 32) : (attempts += 1) _ = loop.pump();
+    try std.testing.expectEqualStrings("part-ial", probe.bytes[0..probe.length]);
+    try std.testing.expectEqual(@as(usize, 2), probe.writes);
     probe.client.?.deinit();
     probe.server.?.deinit();
     listener.deinit();

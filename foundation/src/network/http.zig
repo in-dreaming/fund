@@ -16,8 +16,6 @@ pub const TlsConfig = struct {
     ca_bundle_path: ?[]const u8 = null,
     client_certificate_path: ?[]const u8 = null,
     client_key_path: ?[]const u8 = null,
-    verify_peer: bool = true,
-    verify_host: bool = true,
 };
 pub const Options = struct {
     timeout_ms: u64 = 30_000,
@@ -54,7 +52,40 @@ pub const Response = struct {
     }
 };
 pub const Completion = *const fn (?*anyopaque, Result) void;
-pub const Result = union(enum) { response: Response, failure: errors.ErrorInfo, cancelled };
+pub const Failure = struct {
+    category: errors.ErrorCategory,
+    native_code: i64 = 0,
+    message: []const u8 = "",
+    message_storage: ?memory.SharedBuffer = null,
+
+    fn initCopy(allocator: std.mem.Allocator, info: errors.ErrorInfo) !Failure {
+        var storage = try memory.SharedBuffer.initCopy(allocator, info.message, .network);
+        errdefer storage.release();
+        return .{ .category = info.category, .native_code = info.native_code, .message = try storage.bytes(), .message_storage = storage };
+    }
+    fn deinit(self: *Failure) void {
+        if (self.message_storage) |*storage| storage.release();
+        self.* = undefined;
+    }
+};
+pub const Result = union(enum) {
+    response: Response,
+    failure: Failure,
+    cancelled,
+
+    pub fn deinit(self: *Result) void {
+        switch (self.*) {
+            .response => |*response| response.deinit(),
+            .failure => |*failure_value| failure_value.deinit(),
+            .cancelled => {},
+        }
+        self.* = undefined;
+    }
+};
+
+pub fn failureResult(allocator: std.mem.Allocator, info: errors.ErrorInfo) Result {
+    return .{ .failure = Failure.initCopy(allocator, info) catch .{ .category = .resource_exhausted } };
+}
 
 /// Handle-owned operation. Completion is delivered at most once on the chosen
 /// executor; `deinit` requests cancellation and releases the operation.
@@ -66,8 +97,14 @@ pub const HttpOperation = struct {
     target: executor.Executor,
     response_body_limit: usize,
     references: std.atomic.Value(u8) = std.atomic.Value(u8).init(2),
-    done: bool = false,
+    state: std.atomic.Value(u8) = std.atomic.Value(u8).init(@intFromEnum(State.open)),
+    const State = enum(u8) { open, queued, closing, terminal };
     pub fn deinit(self: *HttpOperation) void {
+        var current = self.state.load(.acquire);
+        while (current != @intFromEnum(State.closing) and current != @intFromEnum(State.terminal)) {
+            if (self.state.cmpxchgWeak(current, @intFromEnum(State.closing), .acq_rel, .acquire) == null) break;
+            current = self.state.load(.acquire);
+        }
         _ = self.source.cancel(.owner_destroyed);
         self.release();
     }
@@ -104,6 +141,14 @@ pub fn createOperation(allocator: std.mem.Allocator, options: Options, completio
     return operation;
 }
 
+/// Abandons an operation when a backend cannot publish the returned handle.
+pub fn abandon(operation: *HttpOperation) void {
+    operation.state.store(@intFromEnum(HttpOperation.State.closing), .release);
+    _ = operation.source.cancel(.owner_destroyed);
+    operation.release();
+    operation.release();
+}
+
 pub const StartError = error{ InvalidArgument, OutOfMemory, Unavailable };
 pub const VTable = struct { start: *const fn (?*anyopaque, std.mem.Allocator, Request, Options, Completion, ?*anyopaque) StartError!*HttpOperation };
 /// Borrowed backend facade. The backend outlives all operations it returns.
@@ -116,12 +161,6 @@ pub const HttpClient = struct {
     }
 };
 
-fn destroyResult(result: *Result) void {
-    switch (result.*) {
-        .response => |*response| response.deinit(),
-        else => {},
-    }
-}
 const Dispatch = struct {
     operation: *HttpOperation,
     allocator: std.mem.Allocator,
@@ -130,14 +169,16 @@ const Dispatch = struct {
         const self: *@This() = @ptrCast(@alignCast(raw.?));
         defer self.allocator.destroy(self);
         defer self.operation.release();
-        defer destroyResult(&self.result);
-        if (self.operation.done) return;
-        self.operation.done = true;
+        if (self.operation.state.cmpxchgStrong(@intFromEnum(HttpOperation.State.queued), @intFromEnum(HttpOperation.State.terminal), .acq_rel, .acquire) != null) {
+            self.result.deinit();
+            return;
+        }
         self.operation.completion(self.operation.userdata, self.result);
     }
     fn discard(raw: ?*anyopaque) void {
         const self: *@This() = @ptrCast(@alignCast(raw.?));
-        destroyResult(&self.result);
+        self.result.deinit();
+        _ = self.operation.state.cmpxchgStrong(@intFromEnum(HttpOperation.State.queued), @intFromEnum(HttpOperation.State.terminal), .acq_rel, .acquire);
         self.operation.release();
         self.allocator.destroy(self);
     }
@@ -145,9 +186,16 @@ const Dispatch = struct {
 /// Transfers the adapter's ownership to an executor-bound terminal result.
 /// After calling this, the adapter must not access `operation` again.
 pub fn finish(operation: *HttpOperation, result: Result) void {
+    if (operation.state.cmpxchgStrong(@intFromEnum(HttpOperation.State.open), @intFromEnum(HttpOperation.State.queued), .acq_rel, .acquire) != null) {
+        var discarded = result;
+        discarded.deinit();
+        operation.release();
+        return;
+    }
     const dispatch = operation.allocator.create(Dispatch) catch {
         var discarded = result;
-        destroyResult(&discarded);
+        discarded.deinit();
+        operation.state.store(@intFromEnum(HttpOperation.State.terminal), .release);
         operation.release();
         return;
     };
@@ -190,14 +238,14 @@ pub const MockClient = struct {
         const script = if (self.scripts.items.len == 0) Script{ .failure = .{ .category = .unavailable, .message = "mock script exhausted" } } else self.scripts.orderedRemove(0);
         switch (script) {
             .pending => tryAppendPending(self, operation),
-            .failure => |failure| finish(operation, .{ .failure = failure }),
+            .failure => |failure| finish(operation, failureResult(operation.allocator, failure)),
             .response => |response| {
                 if (response.body.len > operation.response_body_limit) {
-                    finish(operation, .{ .failure = .{ .category = .resource_exhausted, .native_code = response.native_code, .message = "response body limit exceeded" } });
+                    finish(operation, failureResult(operation.allocator, .{ .category = .resource_exhausted, .native_code = response.native_code, .message = "response body limit exceeded" }));
                     return;
                 }
                 const body = memory.SharedBuffer.initCopy(operation.allocator, response.body, .network) catch {
-                    finish(operation, .{ .failure = .{ .category = .resource_exhausted, .message = "response allocation failed" } });
+                    finish(operation, failureResult(operation.allocator, .{ .category = .resource_exhausted, .message = "response allocation failed" }));
                     return;
                 };
                 finish(operation, .{ .response = .{ .status = response.status, .body = body, .allocator = operation.allocator } });
@@ -205,12 +253,15 @@ pub const MockClient = struct {
         }
     }
     fn tryAppendPending(self: *MockClient, operation: *HttpOperation) void {
-        self.pending.append(self.allocator, operation) catch finish(operation, .{ .failure = .{ .category = .resource_exhausted, .message = "mock queue allocation failed" } });
+        self.pending.append(self.allocator, operation) catch finish(operation, failureResult(operation.allocator, .{ .category = .resource_exhausted, .message = "mock queue allocation failed" }));
     }
     fn start(context: ?*anyopaque, allocator: std.mem.Allocator, _: Request, options: Options, completion: Completion, userdata: ?*anyopaque) StartError!*HttpOperation {
         const self: *MockClient = @ptrCast(@alignCast(context.?));
         const operation = try createOperation(allocator, options, completion, userdata);
-        try self.pending.append(self.allocator, operation);
+        self.pending.append(self.allocator, operation) catch {
+            abandon(operation);
+            return error.OutOfMemory;
+        };
         return operation;
     }
     const vtable = VTable{ .start = start };
@@ -242,6 +293,8 @@ test "mock delivery is executor-bound, bounded, and keeps native code" {
         .failure => |failure| try std.testing.expectEqual(@as(i64, 42), failure.native_code),
         else => return error.TestUnexpectedResult,
     }
+    probe.result.?.deinit();
+    probe.result = null;
 }
 test "mock cancellation delivers cancelled on selected executor" {
     const Probe = struct {
@@ -262,4 +315,27 @@ test "mock cancellation delivers cancelled on selected executor" {
     mock.pump();
     _ = queue.pump();
     try std.testing.expectEqual(@as(usize, 1), probe.calls);
+}
+
+test "completion owns result and teardown drops queued delivery" {
+    const Probe = struct {
+        calls: usize = 0,
+        fn done(raw: ?*anyopaque, result: Result) void {
+            const self: *@This() = @ptrCast(@alignCast(raw.?));
+            self.calls += 1;
+            var owned = result;
+            owned.deinit();
+        }
+    };
+    var mock = MockClient.init(std.testing.allocator);
+    defer mock.deinit();
+    try mock.append(.{ .response = .{ .body = "owned" } });
+    var queue = executor.TestExecutor.init(std.testing.allocator);
+    defer queue.deinit();
+    var probe = Probe{};
+    const operation = try mock.client().start(std.testing.allocator, .{ .url = "https://fixture" }, .{ .executor = queue.executor() }, Probe.done, &probe);
+    mock.pump();
+    operation.deinit();
+    _ = queue.pump();
+    try std.testing.expectEqual(@as(usize, 0), probe.calls);
 }

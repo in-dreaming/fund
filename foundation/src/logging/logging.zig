@@ -75,7 +75,9 @@ pub const MemoryRing = struct {
             var old = self.records.orderedRemove(0);
             old.deinit(self.allocator);
         }
-        self.records.append(self.allocator, try OwnedRecord.copy(self.allocator, input)) catch return error.OutOfMemory;
+        var owned = OwnedRecord.copy(self.allocator, input) catch return error.OutOfMemory;
+        errdefer owned.deinit(self.allocator);
+        self.records.append(self.allocator, owned) catch return error.OutOfMemory;
     }
     fn flush(_: ?*anyopaque, _: ?time.MonotonicInstant) Error!void {}
     const vtable = SinkVTable{ .write = write, .flush = flush };
@@ -96,9 +98,15 @@ const OwnedRecord = struct {
         errdefer allocator.free(keys);
         const texts = try allocator.alloc([]u8, input.fields.len);
         errdefer allocator.free(texts);
+        var initialized_keys: usize = 0;
+        errdefer for (keys[0..initialized_keys]) |key| allocator.free(key);
+        var initialized_texts: usize = 0;
+        errdefer for (texts[0..initialized_texts]) |text| if (text.len != 0) allocator.free(text);
         for (input.fields, 0..) |field, i| {
             keys[i] = try allocator.dupe(u8, field.key);
+            initialized_keys += 1;
             texts[i] = &.{};
+            initialized_texts += 1;
             fields[i] = field;
             fields[i].key = keys[i];
             if (field.value == .text) {
@@ -173,7 +181,9 @@ pub const AsyncDispatcher = struct {
                 self.stats_value.dropped += 1;
             },
         };
-        self.pending.append(self.allocator, OwnedRecord.copy(self.allocator, record) catch return error.OutOfMemory) catch return error.OutOfMemory;
+        var owned = OwnedRecord.copy(self.allocator, record) catch return error.OutOfMemory;
+        errdefer owned.deinit(self.allocator);
+        self.pending.append(self.allocator, owned) catch return error.OutOfMemory;
     }
     pub fn pump(self: *AsyncDispatcher) usize {
         var count: usize = 0;
@@ -270,4 +280,23 @@ test "logging flush deadline and sink failure are reported" {
     try std.testing.expectError(error.DeadlineExceeded, logger.flush(clock.clock().monotonicNow()));
     _ = logger.pump();
     try std.testing.expectEqual(@as(u64, 1), logger.stats().failed_exports);
+}
+
+test "owned log record rolls back every allocation failure" {
+    const input = LogRecord{
+        .timestamp = .{ .nanoseconds = 0 },
+        .level = .info,
+        .category = 1,
+        .message = "message",
+        .fields = &.{
+            .{ .key = "first", .value = .{ .text = "value" } },
+            .{ .key = "second", .value = .{ .integer = 2 } },
+        },
+    };
+    try std.testing.checkAllAllocationFailures(std.testing.allocator, struct {
+        fn run(allocator: std.mem.Allocator, record: LogRecord) !void {
+            var owned = try OwnedRecord.copy(allocator, record);
+            owned.deinit(allocator);
+        }
+    }.run, .{input});
 }
