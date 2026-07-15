@@ -19,6 +19,9 @@ pub const process = if (build_options.process) @import("process/process.zig") el
 pub const json = @import("serialization/json.zig");
 pub const compression = @import("compression/compression.zig");
 pub const hash = @import("hash/hash.zig");
+pub const logging = @import("logging/logging.zig");
+pub const metrics = @import("metrics/metrics.zig");
+pub const trace = @import("trace/trace.zig");
 pub const http = if (build_options.http) @import("network/http.zig") else struct {};
 pub const sse = @import("network/sse.zig");
 /// SQLite database capability. Disabled builds contain no SQLite source or link input.

@@ -1,0 +1,15 @@
+{
+  "name": "tracy",
+  "version": "0.12.2",
+  "source": { "url": "https://github.com/wolfpld/tracy", "ref": "c556831ddc6fe26d2fce01c14c97205a9dad46d5" },
+  "license": { "name": "BSD-3-Clause", "file": "licenses/tracy.txt" },
+  "purpose": "Optional performance timeline adapter.",
+  "platforms": ["windows", "linux", "macos"],
+  "linkage": "static",
+  "source_modifications": false,
+  "patches": [],
+  "security_update_policy": "Review upstream releases and security advisories monthly; update the immutable pin when required.",
+  "replacement_removal_path": "Disable -Dtracy, then remove adapters/tracy and third_party/tracy.",
+  "replacement_cost": "medium",
+  "owner": "foundation-maintainers"
+}

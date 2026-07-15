@@ -15,6 +15,7 @@ pub fn build(b: *std.Build) void {
     const enable_zstd = b.option(bool, "zstd", "Enable the zstd compression adapter") orelse false;
     const enable_lz4 = b.option(bool, "lz4", "Enable the LZ4 compression adapter") orelse false;
     const enable_blake3 = b.option(bool, "blake3", "Enable the BLAKE3 hashing adapter") orelse false;
+    const enable_tracy = b.option(bool, "tracy", "Enable the Tracy performance trace adapter") orelse false;
 
     if (!std.mem.eql(u8, profile, "core") and !std.mem.eql(u8, profile, "game") and !std.mem.eql(u8, profile, "agent") and !std.mem.eql(u8, profile, "tooling") and !std.mem.eql(u8, profile, "server")) {
         @panic("-Dprofile must be core, game, agent, tooling, or server");
@@ -32,6 +33,7 @@ pub fn build(b: *std.Build) void {
     options.addOption(bool, "zstd", enable_zstd);
     options.addOption(bool, "lz4", enable_lz4);
     options.addOption(bool, "blake3", enable_blake3);
+    options.addOption(bool, "tracy", enable_tracy);
 
     const foundation = b.addModule("foundation", .{
         .root_source_file = b.path("src/foundation.zig"),
@@ -132,6 +134,18 @@ pub fn build(b: *std.Build) void {
         module.addImport("foundation", foundation);
         module.addIncludePath(b.path("third_party/blake3/c"));
         inline for (.{ "adapters/blake3/blake3.c", "third_party/blake3/c/blake3.c", "third_party/blake3/c/blake3_dispatch.c", "third_party/blake3/c/blake3_portable.c" }) |source| module.addCSourceFile(.{ .file = b.path(source), .flags = &.{ "-std=c11", "-DBLAKE3_NO_SSE2", "-DBLAKE3_NO_SSE41", "-DBLAKE3_NO_AVX2", "-DBLAKE3_NO_AVX512", "-DBLAKE3_NO_NEON" } });
+        const adapter_tests = b.addTest(.{ .root_module = module });
+        test_step.dependOn(&b.addRunArtifact(adapter_tests).step);
+    }
+    if (enable_tracy) {
+        const module = b.createModule(.{ .root_source_file = b.path("adapters/tracy/tracy.zig"), .target = target, .optimize = optimize, .link_libcpp = true });
+        module.addImport("foundation", foundation);
+        module.addIncludePath(b.path("third_party/tracy/public"));
+        if (target.result.os.tag == .windows) {
+            module.linkSystemLibrary("ws2_32", .{});
+            module.linkSystemLibrary("dbghelp", .{});
+        }
+        module.addCSourceFile(.{ .file = b.path("third_party/tracy/public/TracyClient.cpp"), .flags = &.{ "-std=c++17", "-DTRACY_ENABLE", "-DTRACY_TIMER_QPC" } });
         const adapter_tests = b.addTest(.{ .root_module = module });
         test_step.dependOn(&b.addRunArtifact(adapter_tests).step);
     }
