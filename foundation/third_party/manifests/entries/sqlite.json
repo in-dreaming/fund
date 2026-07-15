@@ -1,0 +1,15 @@
+{
+  "name": "sqlite",
+  "version": "3.46.1",
+  "source": { "url": "https://www.sqlite.org/2024/sqlite-amalgamation-3460100.zip", "ref": "77823cb110929c2bcb0f5d48e4833b5c59a8a6e40cdea3936b99e199dbbe5784" },
+  "license": { "name": "Public Domain", "file": "licenses/sqlite.txt" },
+  "purpose": "Optional embedded SQL database adapter for Foundation clients.",
+  "platforms": ["windows", "linux", "macos"],
+  "linkage": "static",
+  "source_modifications": false,
+  "patches": [],
+  "security_update_policy": "Review SQLite release and security advisories monthly; update this immutable amalgamation pin when required.",
+  "replacement_removal_path": "Disable -Ddatabase, then remove adapters/sqlite and third_party/sqlite.",
+  "replacement_cost": "high",
+  "owner": "foundation-maintainers"
+}

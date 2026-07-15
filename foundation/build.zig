@@ -135,6 +135,15 @@ pub fn build(b: *std.Build) void {
         const adapter_tests = b.addTest(.{ .root_module = module });
         test_step.dependOn(&b.addRunArtifact(adapter_tests).step);
     }
+    if (enable_database) {
+        const module = b.createModule(.{ .root_source_file = b.path("adapters/sqlite/sqlite.zig"), .target = target, .optimize = optimize, .link_libc = true });
+        module.addImport("foundation", foundation);
+        module.addIncludePath(b.path("third_party/sqlite"));
+        module.addCSourceFile(.{ .file = b.path("third_party/sqlite/sqlite3.c"), .flags = &.{ "-std=c11", "-DSQLITE_THREADSAFE=1", "-DSQLITE_OMIT_LOAD_EXTENSION", "-DSQLITE_DQS=0", "-DSQLITE_DEFAULT_MEMSTATUS=0", "-DSQLITE_USE_URI=1" } });
+        const adapter_tests = b.addTest(.{ .root_module = module });
+        test_step.dependOn(&b.addRunArtifact(adapter_tests).step);
+        foundation.addImport("sqlite_adapter", module);
+    }
 
     const dependency_check = b.addSystemCommand(&.{ "zig", "run", "tools/dependency_check.zig", "--", "third_party/manifests/entries" });
     const dependency_step = b.step("dependency-check", "Validate dependency manifests");

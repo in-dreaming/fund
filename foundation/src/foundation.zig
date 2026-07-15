@@ -21,6 +21,8 @@ pub const compression = @import("compression/compression.zig");
 pub const hash = @import("hash/hash.zig");
 pub const http = if (build_options.http) @import("network/http.zig") else struct {};
 pub const sse = @import("network/sse.zig");
+/// SQLite database capability. Disabled builds contain no SQLite source or link input.
+pub const database = if (build_options.database) @import("sqlite_adapter") else struct {};
 
 // Keep C exports reachable when Foundation is built as a static library.
 comptime {

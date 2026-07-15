@@ -1,0 +1,3 @@
+SQLite is in the public domain. The SQLite authors dedicate all copyright
+interests in this software to the public domain. See third_party/sqlite/sqlite3.h
+for the upstream copyright and warranty notice included with this release.
