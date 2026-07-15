@@ -1,0 +1,15 @@
+{
+  "name": "yyjson",
+  "version": "0.12.0",
+  "source": { "url": "https://github.com/ibireme/yyjson", "ref": "7871d321ff4cd8068c1f777c97975dc2fb640ab3" },
+  "license": { "name": "MIT", "file": "licenses/yyjson.txt" },
+  "purpose": "Optional high-throughput JSON parsing adapter.",
+  "platforms": ["windows", "linux", "macos"],
+  "linkage": "static",
+  "source_modifications": false,
+  "patches": [],
+  "security_update_policy": "Review upstream security advisories monthly and update the pinned release when required.",
+  "replacement_removal_path": "Disable -Dyyjson, remove adapters/yyjson and third_party/yyjson.",
+  "replacement_cost": "medium",
+  "owner": "foundation-maintainers"
+}

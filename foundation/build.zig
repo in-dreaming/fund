@@ -11,6 +11,7 @@ pub fn build(b: *std.Build) void {
     const enable_profiler = b.option(bool, "profiler", "Enable profiler capability") orelse false;
     const enable_process = b.option(bool, "process", "Enable process capability") orelse false;
     const enable_filesystem = b.option(bool, "filesystem", "Enable filesystem capability") orelse false;
+    const enable_yyjson = b.option(bool, "yyjson", "Enable the yyjson JSON adapter") orelse false;
 
     if (!std.mem.eql(u8, profile, "core") and !std.mem.eql(u8, profile, "game") and !std.mem.eql(u8, profile, "agent") and !std.mem.eql(u8, profile, "tooling") and !std.mem.eql(u8, profile, "server")) {
         @panic("-Dprofile must be core, game, agent, tooling, or server");
@@ -24,6 +25,7 @@ pub fn build(b: *std.Build) void {
     options.addOption(bool, "profiler", enable_profiler);
     options.addOption(bool, "process", enable_process);
     options.addOption(bool, "filesystem", enable_filesystem);
+    options.addOption(bool, "yyjson", enable_yyjson);
 
     const foundation = b.addModule("foundation", .{
         .root_source_file = b.path("src/foundation.zig"),
@@ -73,6 +75,22 @@ pub fn build(b: *std.Build) void {
     const run_tests = b.addRunArtifact(tests);
     const test_step = b.step("test", "Run Foundation tests");
     test_step.dependOn(&run_tests.step);
+
+    if (enable_yyjson) {
+        const yyjson_module = b.createModule(.{
+            .root_source_file = b.path("adapters/yyjson/yyjson.zig"),
+            .target = target,
+            .optimize = optimize,
+            .link_libc = true,
+        });
+        yyjson_module.addIncludePath(b.path("third_party/yyjson/source/src"));
+        yyjson_module.addCSourceFile(.{ .file = b.path("third_party/yyjson/source/src/yyjson.c"), .flags = &.{"-std=c11"} });
+        yyjson_module.addCSourceFile(.{ .file = b.path("adapters/yyjson/yyjson.c"), .flags = &.{"-std=c11"} });
+        yyjson_module.addImport("foundation", foundation);
+        const yyjson_tests = b.addTest(.{ .root_module = yyjson_module });
+        const run_yyjson_tests = b.addRunArtifact(yyjson_tests);
+        test_step.dependOn(&run_yyjson_tests.step);
+    }
 
     const dependency_check = b.addSystemCommand(&.{ "zig", "run", "tools/dependency_check.zig", "--", "third_party/manifests/entries" });
     const dependency_step = b.step("dependency-check", "Validate dependency manifests");

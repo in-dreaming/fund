@@ -16,6 +16,7 @@ pub const cabi = @import("cabi/cabi.zig");
 pub const plugin = @import("plugin/plugin.zig");
 pub const filesystem = if (build_options.filesystem) @import("filesystem/filesystem.zig") else struct {};
 pub const process = if (build_options.process) @import("process/process.zig") else struct {};
+pub const json = @import("serialization/json.zig");
 
 // Keep C exports reachable when Foundation is built as a static library.
 comptime {

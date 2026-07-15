@@ -6,6 +6,8 @@ Every public API documents each value as exactly one of: borrowed, caller-alloca
 
 `memory.SharedBuffer` is shared ownership: every clone and checked sub-slice owns one reference and must be released. Its byte views are borrowed and become invalid when that owner is released. The final release invokes its configured external callback synchronously on the final releaser's thread, or returns allocator-owned storage to the documented allocator. It deliberately has no public borrowed-data constructor.
 
+`json.JsonDocument` owns parsed JSON storage and must be deinitialized exactly once. `json.JsonValueView`, object keys, and strings are borrowed from that document and cannot outlive it; strings and keys are decoded UTF-8, not source escape spelling. `json.serialize` returns an allocator-owned byte slice released by its caller with the supplied allocator. Compiled schemas own their compilation allocations until `Schema.deinit`; validation does not retain or modify its borrowed input and returns an allocator-owned path only on failure.
+
 ## Errors
 
 Public errors use stable `ErrorCategory` values: `invalid_argument`, `invalid_state`, `not_found`, `permission_denied`, `cancelled`, `timeout`, `unavailable`, `resource_exhausted`, `io`, `network`, `protocol`, `corrupted_data`, `unsupported`, and `internal`. Adapters preserve native numeric codes as diagnostic data while mapping to one category. Error messages exclude secrets. No API uses global last-error state.

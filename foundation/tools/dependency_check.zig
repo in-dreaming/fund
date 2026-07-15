@@ -1,6 +1,6 @@
 const std = @import("std");
 
-const required_fields = [_][]const u8{ "name", "version", "purpose", "platforms", "linkage", "source_modifications", "patches", "security_update_policy", "replacement_removal_path", "replacement_cost", "owner" };
+const required_fields = [_][]const u8{ "name", "version", "purpose", "platforms", "linkage", "source_modifications", "security_update_policy", "replacement_removal_path", "replacement_cost", "owner" };
 
 pub fn main(init: std.process.Init) !void {
     var args = try std.process.Args.Iterator.initAllocator(init.minimal.args, init.gpa);
@@ -60,7 +60,7 @@ fn validateManifest(io: std.Io, allocator: std.mem.Allocator, path: []const u8) 
     cwd.access(io, license_path, .{}) catch return invalid(path, "referenced license file does not exist");
     const linkage = object.get("linkage").?;
     if (linkage != .string or (!std.mem.eql(u8, linkage.string, "static") and !std.mem.eql(u8, linkage.string, "dynamic") and !std.mem.eql(u8, linkage.string, "none"))) return invalid(path, "invalid linkage");
-    const patches = object.get("patches").?;
+    const patches = object.get("patches") orelse return invalid(path, "missing patches");
     if (patches != .array) return invalid(path, "patches must be an array");
     for (patches.array.items) |patch| {
         if (patch != .string or patch.string.len == 0) return invalid(path, "patch must be a non-empty path");
