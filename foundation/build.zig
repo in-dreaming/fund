@@ -10,6 +10,7 @@ pub fn build(b: *std.Build) void {
     const enable_compression = b.option(bool, "compression", "Enable compression capabilities") orelse false;
     const enable_profiler = b.option(bool, "profiler", "Enable profiler capability") orelse false;
     const enable_process = b.option(bool, "process", "Enable process capability") orelse false;
+    const enable_filesystem = b.option(bool, "filesystem", "Enable filesystem capability") orelse false;
 
     if (!std.mem.eql(u8, profile, "core") and !std.mem.eql(u8, profile, "game") and !std.mem.eql(u8, profile, "agent") and !std.mem.eql(u8, profile, "tooling") and !std.mem.eql(u8, profile, "server")) {
         @panic("-Dprofile must be core, game, agent, tooling, or server");
@@ -22,6 +23,7 @@ pub fn build(b: *std.Build) void {
     options.addOption(bool, "compression", enable_compression);
     options.addOption(bool, "profiler", enable_profiler);
     options.addOption(bool, "process", enable_process);
+    options.addOption(bool, "filesystem", enable_filesystem);
 
     const foundation = b.addModule("foundation", .{
         .root_source_file = b.path("src/foundation.zig"),
