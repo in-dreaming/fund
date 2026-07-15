@@ -4,6 +4,7 @@
 pub const build_options = @import("build_options");
 pub const errors = @import("error/error.zig");
 pub const ids = @import("ids/ids.zig");
+pub const memory = @import("memory/shared_buffer.zig");
 pub const time = @import("time/time.zig");
 
 test "foundation module loads" {

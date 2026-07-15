@@ -4,6 +4,8 @@
 
 Every public API documents each value as exactly one of: borrowed, caller-allocated, allocator-owned, shared, or handle-owned. Borrowed values name their owner and lifetime. Allocator-owned values name the allocator used for release. Shared values define retain/release behavior. Handle-owned values define the release operation and stale-handle behavior.
 
+`memory.SharedBuffer` is shared ownership: every clone and checked sub-slice owns one reference and must be released. Its byte views are borrowed and become invalid when that owner is released. The final release invokes its configured external callback synchronously on the final releaser's thread, or returns allocator-owned storage to the documented allocator. It deliberately has no public borrowed-data constructor.
+
 ## Errors
 
 Public errors use stable `ErrorCategory` values: `invalid_argument`, `invalid_state`, `not_found`, `permission_denied`, `cancelled`, `timeout`, `unavailable`, `resource_exhausted`, `io`, `network`, `protocol`, `corrupted_data`, `unsupported`, and `internal`. Adapters preserve native numeric codes as diagnostic data while mapping to one category. Error messages exclude secrets. No API uses global last-error state.
