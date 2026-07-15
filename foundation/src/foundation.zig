@@ -6,6 +6,8 @@ pub const errors = @import("error/error.zig");
 pub const ids = @import("ids/ids.zig");
 pub const memory = @import("memory/shared_buffer.zig");
 pub const time = @import("time/time.zig");
+pub const cancellation = @import("async/cancellation.zig");
+pub const shutdown = @import("async/shutdown.zig");
 
 test "foundation module loads" {
     _ = build_options.profile;
