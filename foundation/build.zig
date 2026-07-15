@@ -30,6 +30,43 @@ pub fn build(b: *std.Build) void {
     });
     foundation.addOptions("build_options", options);
 
+    const cabi_library = b.addLibrary(.{ .name = "foundation", .root_module = foundation, .linkage = .static });
+    const install_cabi = b.addInstallArtifact(cabi_library, .{});
+    const install_header = b.addInstallFile(b.path("include/foundation.h"), "include/foundation.h");
+    const cabi_step = b.step("cabi", "Build the static C ABI library and public header");
+    cabi_step.dependOn(&install_cabi.step);
+    cabi_step.dependOn(&install_header.step);
+
+    const cabi_smoke = b.addExecutable(.{
+        .name = "cabi_smoke",
+        .root_module = b.createModule(.{ .target = target, .optimize = optimize, .link_libc = true }),
+    });
+    cabi_smoke.root_module.addCSourceFile(.{ .file = b.path("tests/cabi_smoke.c"), .flags = &.{"-std=c11"} });
+    cabi_smoke.root_module.addIncludePath(b.path("include"));
+    cabi_smoke.root_module.linkLibrary(cabi_library);
+    const run_cabi_smoke = b.addRunArtifact(cabi_smoke);
+    const cabi_test_step = b.step("cabi-test", "Compile and run a C11 consumer of foundation.h");
+    cabi_test_step.dependOn(&run_cabi_smoke.step);
+
+    const cabi_cpp_smoke = b.addExecutable(.{
+        .name = "cabi_cpp_smoke",
+        .root_module = b.createModule(.{ .target = target, .optimize = optimize, .link_libcpp = true }),
+    });
+    cabi_cpp_smoke.root_module.addCSourceFile(.{ .file = b.path("tests/cabi_cpp.cpp"), .flags = &.{"-std=c++17"} });
+    cabi_cpp_smoke.root_module.addIncludePath(b.path("include"));
+    cabi_cpp_smoke.root_module.linkLibrary(cabi_library);
+    const run_cabi_cpp_smoke = b.addRunArtifact(cabi_cpp_smoke);
+    cabi_test_step.dependOn(&run_cabi_cpp_smoke.step);
+
+    const fixture_plugin_module = b.createModule(.{
+        .root_source_file = b.path("tests/fixture_plugin.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    fixture_plugin_module.addImport("foundation", foundation);
+    const fixture_plugin = b.addLibrary(.{ .name = "foundation_fixture_plugin", .root_module = fixture_plugin_module, .linkage = .dynamic });
+    cabi_test_step.dependOn(&fixture_plugin.step);
+
     const tests = b.addTest(.{ .root_module = foundation });
     const run_tests = b.addRunArtifact(tests);
     const test_step = b.step("test", "Run Foundation tests");

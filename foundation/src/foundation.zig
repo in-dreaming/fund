@@ -12,6 +12,13 @@ pub const executor = @import("executor/executor.zig");
 pub const future = @import("async/future.zig");
 pub const operation = @import("async/operation.zig");
 pub const channel = @import("channel/channel.zig");
+pub const cabi = @import("cabi/cabi.zig");
+pub const plugin = @import("plugin/plugin.zig");
+
+// Keep C exports reachable when Foundation is built as a static library.
+comptime {
+    _ = cabi;
+}
 
 test "foundation module loads" {
     _ = build_options.profile;
