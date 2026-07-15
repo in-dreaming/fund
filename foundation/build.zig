@@ -1,27 +1,72 @@
 const std = @import("std");
 
+const Features = struct {
+    http: bool = false,
+    database: bool = false,
+    compression: bool = false,
+    profiler: bool = false,
+    process: bool = false,
+    filesystem: bool = false,
+    yyjson: bool = false,
+    zstd: bool = false,
+    lz4: bool = false,
+    blake3: bool = false,
+    tracy: bool = false,
+    libuv: bool = false,
+};
+
+fn profileDefaults(profile: []const u8) Features {
+    if (std.mem.eql(u8, profile, "game")) return .{ .filesystem = true, .compression = true, .zstd = true, .lz4 = true, .blake3 = true, .profiler = true, .tracy = true };
+    if (std.mem.eql(u8, profile, "agent")) return .{ .http = true, .database = true, .yyjson = true };
+    if (std.mem.eql(u8, profile, "tooling")) return .{ .http = true, .database = true, .process = true, .filesystem = true, .yyjson = true, .compression = true, .zstd = true, .lz4 = true, .libuv = true };
+    if (std.mem.eql(u8, profile, "server")) return .{ .http = true, .database = true, .yyjson = true, .libuv = true };
+    return .{};
+}
+
+fn validateFeatures(profile: []const u8, features: Features) void {
+    if (std.mem.eql(u8, profile, "core") and (features.http or features.database or features.compression or features.profiler or features.process or features.filesystem or features.yyjson or features.zstd or features.lz4 or features.blake3 or features.tracy or features.libuv)) @panic("core permits no optional capabilities; select another profile or omit feature flags");
+    if (!features.compression and (features.zstd or features.lz4)) @panic("-Dzstd and -Dlz4 require -Dcompression=true");
+    if (!features.profiler and features.tracy) @panic("-Dtracy requires -Dprofiler=true");
+    if (features.http and !std.mem.eql(u8, profile, "agent") and !std.mem.eql(u8, profile, "tooling") and !std.mem.eql(u8, profile, "server") and !std.mem.eql(u8, profile, "game")) @panic("-Dhttp is not allowed by this profile");
+}
+
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
     const profile = b.option([]const u8, "profile", "Build profile: core, game, agent, tooling, or server") orelse "core";
-    const enable_http = b.option(bool, "http", "Enable the HTTP capability") orelse false;
-    const enable_database = b.option(bool, "database", "Enable the database capability") orelse false;
-    const enable_compression = b.option(bool, "compression", "Enable compression capabilities") orelse false;
-    const enable_profiler = b.option(bool, "profiler", "Enable profiler capability") orelse false;
-    const enable_process = b.option(bool, "process", "Enable process capability") orelse false;
-    const enable_filesystem = b.option(bool, "filesystem", "Enable filesystem capability") orelse false;
-    const enable_yyjson = b.option(bool, "yyjson", "Enable the yyjson JSON adapter") orelse false;
-    const enable_zstd = b.option(bool, "zstd", "Enable the zstd compression adapter") orelse false;
-    const enable_lz4 = b.option(bool, "lz4", "Enable the LZ4 compression adapter") orelse false;
-    const enable_blake3 = b.option(bool, "blake3", "Enable the BLAKE3 hashing adapter") orelse false;
-    const enable_tracy = b.option(bool, "tracy", "Enable the Tracy performance trace adapter") orelse false;
-    const enable_libuv = b.option(bool, "libuv", "Enable the libuv tooling adapter") orelse false;
+    const requested_http = b.option(bool, "http", "Enable the HTTP capability");
+    const requested_database = b.option(bool, "database", "Enable the database capability");
+    const requested_compression = b.option(bool, "compression", "Enable compression capabilities");
+    const requested_profiler = b.option(bool, "profiler", "Enable profiler capability");
+    const requested_process = b.option(bool, "process", "Enable process capability");
+    const requested_filesystem = b.option(bool, "filesystem", "Enable filesystem capability");
+    const requested_yyjson = b.option(bool, "yyjson", "Enable the yyjson JSON adapter");
+    const requested_zstd = b.option(bool, "zstd", "Enable the zstd compression adapter");
+    const requested_lz4 = b.option(bool, "lz4", "Enable the LZ4 compression adapter");
+    const requested_blake3 = b.option(bool, "blake3", "Enable the BLAKE3 hashing adapter");
+    const requested_tracy = b.option(bool, "tracy", "Enable the Tracy performance trace adapter");
+    const requested_libuv = b.option(bool, "libuv", "Enable the libuv tooling adapter");
     const enable_testing = b.option(bool, "testing", "Enable deterministic testing infrastructure in non-test builds") orelse false;
 
     if (!std.mem.eql(u8, profile, "core") and !std.mem.eql(u8, profile, "game") and !std.mem.eql(u8, profile, "agent") and !std.mem.eql(u8, profile, "tooling") and !std.mem.eql(u8, profile, "server")) {
         @panic("-Dprofile must be core, game, agent, tooling, or server");
     }
+
+    const defaults = profileDefaults(profile);
+    const enable_http = requested_http orelse defaults.http;
+    const enable_database = requested_database orelse defaults.database;
+    const enable_compression = requested_compression orelse defaults.compression;
+    const enable_profiler = requested_profiler orelse defaults.profiler;
+    const enable_process = requested_process orelse defaults.process;
+    const enable_filesystem = requested_filesystem orelse defaults.filesystem;
+    const enable_yyjson = requested_yyjson orelse defaults.yyjson;
+    const enable_zstd = requested_zstd orelse defaults.zstd;
+    const enable_lz4 = requested_lz4 orelse defaults.lz4;
+    const enable_blake3 = requested_blake3 orelse defaults.blake3;
+    const enable_tracy = requested_tracy orelse defaults.tracy;
+    const enable_libuv = requested_libuv orelse defaults.libuv;
+    validateFeatures(profile, .{ .http = enable_http, .database = enable_database, .compression = enable_compression, .profiler = enable_profiler, .process = enable_process, .filesystem = enable_filesystem, .yyjson = enable_yyjson, .zstd = enable_zstd, .lz4 = enable_lz4, .blake3 = enable_blake3, .tracy = enable_tracy, .libuv = enable_libuv });
 
     const options = b.addOptions();
     options.addOption([]const u8, "profile", profile);
@@ -38,6 +83,11 @@ pub fn build(b: *std.Build) void {
     options.addOption(bool, "tracy", enable_tracy);
     options.addOption(bool, "libuv", enable_libuv);
     options.addOption(bool, "testing", enable_testing);
+    options.addOption(bool, "json", enable_yyjson or std.mem.eql(u8, profile, "agent") or std.mem.eql(u8, profile, "tooling") or std.mem.eql(u8, profile, "server"));
+    options.addOption(bool, "hash", enable_blake3 or std.mem.eql(u8, profile, "game"));
+    options.addOption(bool, "logging", !std.mem.eql(u8, profile, "core"));
+    options.addOption(bool, "metrics", std.mem.eql(u8, profile, "agent") or std.mem.eql(u8, profile, "tooling") or std.mem.eql(u8, profile, "server"));
+    options.addOption(bool, "trace", enable_profiler or std.mem.eql(u8, profile, "agent") or std.mem.eql(u8, profile, "tooling") or std.mem.eql(u8, profile, "server"));
 
     const foundation = b.addModule("foundation", .{
         .root_source_file = b.path("src/foundation.zig"),
@@ -187,4 +237,18 @@ pub fn build(b: *std.Build) void {
     const check_step = b.step("check", "Run Foundation governance checks");
     check_step.dependOn(&dependency_check.step);
     check_step.dependOn(&boundary_check.step);
+
+    const release_check = b.addSystemCommand(&.{ "zig", "run", "tools/release_check.zig", "--", "third_party/manifests/entries", "third_party/THIRD_PARTY_NOTICES.txt" });
+    const release_step = b.step("release-check", "Validate release notices and license inputs");
+    release_step.dependOn(&release_check.step);
+    check_step.dependOn(&release_check.step);
+
+    const examples_step = b.step("examples", "Build the selected profile consumer fixture");
+    const example_name = if (std.mem.eql(u8, profile, "game")) "game" else if (std.mem.eql(u8, profile, "agent")) "agent" else if (std.mem.eql(u8, profile, "tooling")) "tooling" else if (std.mem.eql(u8, profile, "server")) "server" else "core";
+    const example = b.addExecutable(.{ .name = b.fmt("foundation_{s}_example", .{example_name}), .root_module = b.createModule(.{ .root_source_file = b.path(b.fmt("examples/{s}.zig", .{example_name})), .target = target, .optimize = optimize }) });
+    example.root_module.addImport("foundation", foundation);
+    examples_step.dependOn(&example.step);
+    const run_example = b.addRunArtifact(example);
+    const examples_test_step = b.step("examples-test", "Run the selected profile consumer fixture");
+    examples_test_step.dependOn(&run_example.step);
 }

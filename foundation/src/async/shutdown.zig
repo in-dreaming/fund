@@ -1,6 +1,16 @@
 const std = @import("std");
 const time = @import("../time/time.zig");
 
+const Mutex = struct {
+    state: std.atomic.Mutex = .unlocked,
+    fn lock(self: *Mutex) void {
+        while (!self.state.tryLock()) std.atomic.spinLoopHint();
+    }
+    fn unlock(self: *Mutex) void {
+        self.state.unlock();
+    }
+};
+
 pub const ShutdownMode = enum { graceful, immediate };
 pub const ShutdownPhase = enum(u8) { stop_accepting, cancel_operations, drain_critical, flush_observability, stop_loops, join_threads, destroy_adapters, report_leaks };
 pub const ParticipantResult = enum { complete, pending, failed };
@@ -20,7 +30,7 @@ pub const ShutdownCoordinator = struct {
     deadline: ?time.MonotonicInstant = null,
     cursor: usize = 0,
     failures: usize = 0,
-    mutex: std.Thread.Mutex = .{},
+    mutex: Mutex = .{},
 
     const State = enum { idle, running, complete };
     pub const RunResult = enum { complete, pending, deadline_exceeded };

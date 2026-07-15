@@ -5,7 +5,7 @@ on:
   pull_request:
 
 jobs:
-  foundation:
+  core:
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -28,7 +28,49 @@ jobs:
       - name: Core build and tests
         working-directory: foundation
         run: zig build -Dprofile=core test
+      - name: Core consumer example
+        working-directory: foundation
+        run: zig build -Dprofile=core examples-test
       - name: C header syntax
         working-directory: foundation
         shell: bash
         run: printf '#include "foundation.h"\nint main(void) { return 0; }\n' | zig cc -x c -c -I "$PWD/include" -o /dev/null -
+  profiles:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [game, agent, tooling, server]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+      - name: Profile tests
+        working-directory: foundation
+        run: zig build -Dprofile=${{ matrix.profile }} test
+      - name: Consumer fixture
+        working-directory: foundation
+        run: zig build -Dprofile=${{ matrix.profile }} examples-test
+      - name: ABI consumers
+        working-directory: foundation
+        run: zig build -Dprofile=${{ matrix.profile }} cabi-test
+  portable-profiles:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+      - name: Portable game profile
+        working-directory: foundation
+        run: zig build -Dprofile=game test
+      - name: Portable agent profile without Windows curl bundle
+        working-directory: foundation
+        run: zig build -Dprofile=agent -Dhttp=false test
+      - name: Portable tooling profile without Windows-only adapters
+        working-directory: foundation
+        run: zig build -Dprofile=tooling -Dhttp=false -Dlibuv=false test
+      - name: Portable server profile without Windows-only adapters
+        working-directory: foundation
+        run: zig build -Dprofile=server -Dhttp=false -Dlibuv=false test

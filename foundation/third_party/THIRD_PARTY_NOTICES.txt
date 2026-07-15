@@ -1,0 +1,12 @@
+Foundation third-party notices
+
+This release input is assembled from third_party/manifests/entries. Full license texts are retained in third_party/licenses.
+
+blake3 1.5.4 - CC0-1.0 OR Apache-2.0
+libcurl 8.21.0_3 - curl
+libuv 1.49.2 - MIT
+lz4 1.10.0 - BSD-2-Clause
+sqlite 3.46.1 - Public Domain
+tracy 0.12.2 - BSD-3-Clause
+yyjson 0.12.0 - MIT
+zstd 1.5.6 - BSD-3-Clause

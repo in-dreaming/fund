@@ -17,14 +17,14 @@ pub const cabi = @import("cabi/cabi.zig");
 pub const plugin = @import("plugin/plugin.zig");
 pub const filesystem = if (build_options.filesystem) @import("filesystem/filesystem.zig") else struct {};
 pub const process = if (build_options.process) @import("process/process.zig") else struct {};
-pub const json = @import("serialization/json.zig");
-pub const compression = @import("compression/compression.zig");
-pub const hash = @import("hash/hash.zig");
-pub const logging = @import("logging/logging.zig");
-pub const metrics = @import("metrics/metrics.zig");
-pub const trace = @import("trace/trace.zig");
+pub const json = if (build_options.json) @import("serialization/json.zig") else struct {};
+pub const compression = if (build_options.compression) @import("compression/compression.zig") else struct {};
+pub const hash = if (build_options.hash) @import("hash/hash.zig") else struct {};
+pub const logging = if (build_options.logging) @import("logging/logging.zig") else struct {};
+pub const metrics = if (build_options.metrics) @import("metrics/metrics.zig") else struct {};
+pub const trace = if (build_options.trace) @import("trace/trace.zig") else struct {};
 pub const http = if (build_options.http) @import("network/http.zig") else struct {};
-pub const sse = @import("network/sse.zig");
+pub const sse = if (build_options.http) @import("network/sse.zig") else struct {};
 /// SQLite database capability. Disabled builds contain no SQLite source or link input.
 pub const database = if (build_options.database) @import("sqlite_adapter") else struct {};
 /// Optional owner-pumped libuv adapter. It is absent unless built with `-Dlibuv`.
