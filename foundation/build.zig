@@ -12,6 +12,9 @@ pub fn build(b: *std.Build) void {
     const enable_process = b.option(bool, "process", "Enable process capability") orelse false;
     const enable_filesystem = b.option(bool, "filesystem", "Enable filesystem capability") orelse false;
     const enable_yyjson = b.option(bool, "yyjson", "Enable the yyjson JSON adapter") orelse false;
+    const enable_zstd = b.option(bool, "zstd", "Enable the zstd compression adapter") orelse false;
+    const enable_lz4 = b.option(bool, "lz4", "Enable the LZ4 compression adapter") orelse false;
+    const enable_blake3 = b.option(bool, "blake3", "Enable the BLAKE3 hashing adapter") orelse false;
 
     if (!std.mem.eql(u8, profile, "core") and !std.mem.eql(u8, profile, "game") and !std.mem.eql(u8, profile, "agent") and !std.mem.eql(u8, profile, "tooling") and !std.mem.eql(u8, profile, "server")) {
         @panic("-Dprofile must be core, game, agent, tooling, or server");
@@ -26,6 +29,9 @@ pub fn build(b: *std.Build) void {
     options.addOption(bool, "process", enable_process);
     options.addOption(bool, "filesystem", enable_filesystem);
     options.addOption(bool, "yyjson", enable_yyjson);
+    options.addOption(bool, "zstd", enable_zstd);
+    options.addOption(bool, "lz4", enable_lz4);
+    options.addOption(bool, "blake3", enable_blake3);
 
     const foundation = b.addModule("foundation", .{
         .root_source_file = b.path("src/foundation.zig"),
@@ -103,6 +109,31 @@ pub fn build(b: *std.Build) void {
         const curl_tests = b.addTest(.{ .root_module = curl_module });
         const run_curl_tests = b.addRunArtifact(curl_tests);
         test_step.dependOn(&run_curl_tests.step);
+    }
+
+    if (enable_zstd) {
+        const module = b.createModule(.{ .root_source_file = b.path("adapters/zstd/zstd.zig"), .target = target, .optimize = optimize, .link_libc = true });
+        module.addImport("foundation", foundation);
+        module.addIncludePath(b.path("third_party/zstd/lib"));
+        module.addCSourceFiles(.{ .root = b.path("third_party/zstd/lib"), .files = &.{ "common/debug.c", "common/entropy_common.c", "common/error_private.c", "common/fse_decompress.c", "common/pool.c", "common/threading.c", "common/xxhash.c", "common/zstd_common.c", "compress/fse_compress.c", "compress/hist.c", "compress/huf_compress.c", "compress/zstdmt_compress.c", "compress/zstd_compress.c", "compress/zstd_compress_literals.c", "compress/zstd_compress_sequences.c", "compress/zstd_compress_superblock.c", "compress/zstd_double_fast.c", "compress/zstd_fast.c", "compress/zstd_lazy.c", "compress/zstd_ldm.c", "compress/zstd_opt.c", "decompress/huf_decompress.c", "decompress/zstd_ddict.c", "decompress/zstd_decompress.c", "decompress/zstd_decompress_block.c" }, .flags = &.{ "-std=c11", "-DZSTD_DISABLE_ASM", "-DZSTD_MULTITHREAD=0" } });
+        const adapter_tests = b.addTest(.{ .root_module = module });
+        test_step.dependOn(&b.addRunArtifact(adapter_tests).step);
+    }
+    if (enable_lz4) {
+        const module = b.createModule(.{ .root_source_file = b.path("adapters/lz4/lz4.zig"), .target = target, .optimize = optimize, .link_libc = true });
+        module.addImport("foundation", foundation);
+        module.addIncludePath(b.path("third_party/lz4/lib"));
+        module.addCSourceFile(.{ .file = b.path("third_party/lz4/lib/lz4.c"), .flags = &.{"-std=c11"} });
+        const adapter_tests = b.addTest(.{ .root_module = module });
+        test_step.dependOn(&b.addRunArtifact(adapter_tests).step);
+    }
+    if (enable_blake3) {
+        const module = b.createModule(.{ .root_source_file = b.path("adapters/blake3/blake3.zig"), .target = target, .optimize = optimize, .link_libc = true });
+        module.addImport("foundation", foundation);
+        module.addIncludePath(b.path("third_party/blake3/c"));
+        inline for (.{ "adapters/blake3/blake3.c", "third_party/blake3/c/blake3.c", "third_party/blake3/c/blake3_dispatch.c", "third_party/blake3/c/blake3_portable.c" }) |source| module.addCSourceFile(.{ .file = b.path(source), .flags = &.{ "-std=c11", "-DBLAKE3_NO_SSE2", "-DBLAKE3_NO_SSE41", "-DBLAKE3_NO_AVX2", "-DBLAKE3_NO_AVX512", "-DBLAKE3_NO_NEON" } });
+        const adapter_tests = b.addTest(.{ .root_module = module });
+        test_step.dependOn(&b.addRunArtifact(adapter_tests).step);
     }
 
     const dependency_check = b.addSystemCommand(&.{ "zig", "run", "tools/dependency_check.zig", "--", "third_party/manifests/entries" });

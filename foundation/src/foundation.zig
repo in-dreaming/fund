@@ -17,6 +17,8 @@ pub const plugin = @import("plugin/plugin.zig");
 pub const filesystem = if (build_options.filesystem) @import("filesystem/filesystem.zig") else struct {};
 pub const process = if (build_options.process) @import("process/process.zig") else struct {};
 pub const json = @import("serialization/json.zig");
+pub const compression = @import("compression/compression.zig");
+pub const hash = @import("hash/hash.zig");
 pub const http = if (build_options.http) @import("network/http.zig") else struct {};
 pub const sse = @import("network/sse.zig");
 
