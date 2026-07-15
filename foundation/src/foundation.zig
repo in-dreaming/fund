@@ -1,5 +1,6 @@
 //! Foundation public Zig module root.
 //! Ownership and ABI contracts are documented in `docs/architecture.md`.
+const builtin = @import("builtin");
 
 pub const build_options = @import("build_options");
 pub const errors = @import("error/error.zig");
@@ -28,6 +29,9 @@ pub const sse = @import("network/sse.zig");
 pub const database = if (build_options.database) @import("sqlite_adapter") else struct {};
 /// Optional owner-pumped libuv adapter. It is absent unless built with `-Dlibuv`.
 pub const libuv = if (build_options.libuv) @import("event_loop_adapter") else struct {};
+/// Deterministic test infrastructure. This is compiled for `zig test` and is
+/// absent from non-test artifacts unless built with `-Dtesting=true`.
+pub const testing = if (builtin.is_test or build_options.testing) @import("testing/testing.zig") else struct {};
 
 // Keep C exports reachable when Foundation is built as a static library.
 comptime {

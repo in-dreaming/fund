@@ -17,6 +17,7 @@ pub fn build(b: *std.Build) void {
     const enable_blake3 = b.option(bool, "blake3", "Enable the BLAKE3 hashing adapter") orelse false;
     const enable_tracy = b.option(bool, "tracy", "Enable the Tracy performance trace adapter") orelse false;
     const enable_libuv = b.option(bool, "libuv", "Enable the libuv tooling adapter") orelse false;
+    const enable_testing = b.option(bool, "testing", "Enable deterministic testing infrastructure in non-test builds") orelse false;
 
     if (!std.mem.eql(u8, profile, "core") and !std.mem.eql(u8, profile, "game") and !std.mem.eql(u8, profile, "agent") and !std.mem.eql(u8, profile, "tooling") and !std.mem.eql(u8, profile, "server")) {
         @panic("-Dprofile must be core, game, agent, tooling, or server");
@@ -36,6 +37,7 @@ pub fn build(b: *std.Build) void {
     options.addOption(bool, "blake3", enable_blake3);
     options.addOption(bool, "tracy", enable_tracy);
     options.addOption(bool, "libuv", enable_libuv);
+    options.addOption(bool, "testing", enable_testing);
 
     const foundation = b.addModule("foundation", .{
         .root_source_file = b.path("src/foundation.zig"),
