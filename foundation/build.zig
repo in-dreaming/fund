@@ -16,6 +16,7 @@ pub fn build(b: *std.Build) void {
     const enable_lz4 = b.option(bool, "lz4", "Enable the LZ4 compression adapter") orelse false;
     const enable_blake3 = b.option(bool, "blake3", "Enable the BLAKE3 hashing adapter") orelse false;
     const enable_tracy = b.option(bool, "tracy", "Enable the Tracy performance trace adapter") orelse false;
+    const enable_libuv = b.option(bool, "libuv", "Enable the libuv tooling adapter") orelse false;
 
     if (!std.mem.eql(u8, profile, "core") and !std.mem.eql(u8, profile, "game") and !std.mem.eql(u8, profile, "agent") and !std.mem.eql(u8, profile, "tooling") and !std.mem.eql(u8, profile, "server")) {
         @panic("-Dprofile must be core, game, agent, tooling, or server");
@@ -34,6 +35,7 @@ pub fn build(b: *std.Build) void {
     options.addOption(bool, "lz4", enable_lz4);
     options.addOption(bool, "blake3", enable_blake3);
     options.addOption(bool, "tracy", enable_tracy);
+    options.addOption(bool, "libuv", enable_libuv);
 
     const foundation = b.addModule("foundation", .{
         .root_source_file = b.path("src/foundation.zig"),
@@ -157,6 +159,19 @@ pub fn build(b: *std.Build) void {
         const adapter_tests = b.addTest(.{ .root_module = module });
         test_step.dependOn(&b.addRunArtifact(adapter_tests).step);
         foundation.addImport("sqlite_adapter", module);
+    }
+    if (enable_libuv) {
+        if (target.result.os.tag != .windows) @panic("the vendored libuv adapter currently supports Windows hosts only");
+        const module = b.createModule(.{ .root_source_file = b.path("adapters/libuv/libuv.zig"), .target = target, .optimize = optimize, .link_libc = true });
+        module.addImport("foundation", foundation);
+        module.addIncludePath(b.path("third_party/libuv/include"));
+        module.addIncludePath(b.path("third_party/libuv/src"));
+        module.addCSourceFile(.{ .file = b.path("adapters/libuv/libuv_bridge.c"), .flags = &.{ "-std=c11", "-DWIN32_LEAN_AND_MEAN", "-D_WIN32_WINNT=0x0602", "-D_CRT_DECLARE_NONSTDC_NAMES=0" } });
+        module.addCSourceFiles(.{ .root = b.path("third_party/libuv"), .files = &.{ "src/fs-poll.c", "src/idna.c", "src/inet.c", "src/random.c", "src/strscpy.c", "src/strtok.c", "src/thread-common.c", "src/threadpool.c", "src/timer.c", "src/uv-common.c", "src/uv-data-getter-setters.c", "src/version.c", "src/win/async.c", "src/win/core.c", "src/win/detect-wakeup.c", "src/win/dl.c", "src/win/error.c", "src/win/fs.c", "src/win/fs-event.c", "src/win/getaddrinfo.c", "src/win/getnameinfo.c", "src/win/handle.c", "src/win/loop-watcher.c", "src/win/pipe.c", "src/win/thread.c", "src/win/poll.c", "src/win/process.c", "src/win/process-stdio.c", "src/win/signal.c", "src/win/snprintf.c", "src/win/stream.c", "src/win/tcp.c", "src/win/tty.c", "src/win/udp.c", "src/win/util.c", "src/win/winapi.c", "src/win/winsock.c" }, .flags = &.{ "-std=c11", "-DWIN32_LEAN_AND_MEAN", "-D_WIN32_WINNT=0x0602", "-D_CRT_DECLARE_NONSTDC_NAMES=0" } });
+        inline for (.{ "psapi", "user32", "advapi32", "iphlpapi", "userenv", "ws2_32", "dbghelp", "ole32", "shell32" }) |name| module.linkSystemLibrary(name, .{});
+        const adapter_tests = b.addTest(.{ .root_module = module });
+        test_step.dependOn(&b.addRunArtifact(adapter_tests).step);
+        foundation.addImport("event_loop_adapter", module);
     }
 
     const dependency_check = b.addSystemCommand(&.{ "zig", "run", "tools/dependency_check.zig", "--", "third_party/manifests/entries" });

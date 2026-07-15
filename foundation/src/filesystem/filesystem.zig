@@ -12,7 +12,7 @@ pub const Durability = enum { none, data };
 pub const OpenMode = enum { read, write, read_write };
 pub const FileType = enum { file, directory, other };
 pub const Metadata = struct { kind: FileType, size: u64 };
-pub const WatchEventKind = enum { created, modified, removed, renamed, overflow };
+pub const WatchEventKind = enum { created, modified, removed, renamed, overflow, rescan_required };
 /// Reserved for Task 15. `path` is borrowed for the callback duration.
 pub const WatchEvent = struct { kind: WatchEventKind, path: []const u8, old_path: ?[]const u8 = null };
 

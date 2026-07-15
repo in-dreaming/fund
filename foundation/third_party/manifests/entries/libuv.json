@@ -1,0 +1,15 @@
+{
+  "name": "libuv",
+  "version": "1.49.2",
+  "source": { "url": "https://github.com/libuv/libuv.git", "ref": "6a276e37f31cc594b4656fd297193963f15ef556" },
+  "license": { "name": "MIT", "file": "licenses/libuv.txt" },
+  "purpose": "Optional owner-pumped event loop, timer, file watch, local IPC, and process adapter for tooling and servers.",
+  "platforms": ["windows"],
+  "linkage": "static",
+  "source_modifications": false,
+  "patches": [],
+  "security_update_policy": "Review libuv security advisories monthly and update the immutable release pin for fixes.",
+  "replacement_removal_path": "Disable -Dlibuv, then remove adapters/libuv and third_party/libuv.",
+  "replacement_cost": "high",
+  "owner": "foundation-maintainers"
+}
