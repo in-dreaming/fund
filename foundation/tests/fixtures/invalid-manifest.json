@@ -1,0 +1,6 @@
+{
+  "name": "bad",
+  "version": "1.0.0",
+  "source": { "url": "https://example.invalid/bad", "ref": "main" },
+  "license": { "name": "MIT", "file": "licenses/missing.txt" }
+}

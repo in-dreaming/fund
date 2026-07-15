@@ -1,0 +1,16 @@
+.{
+    .fingerprint = 0x5f93159a796de845,
+    .name = .foundation,
+    .version = "0.0.0",
+    .minimum_zig_version = "0.16.0",
+    .dependencies = .{},
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "include",
+        "src",
+        "tests",
+        "tools",
+        "third_party",
+    },
+}

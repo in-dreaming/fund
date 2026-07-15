@@ -1,0 +1,15 @@
+{
+  "name": "example",
+  "version": "1.0.0",
+  "source": { "url": "https://example.invalid/example", "ref": "0123456789abcdef0123456789abcdef01234567" },
+  "license": { "name": "MIT", "file": "licenses/example.txt" },
+  "purpose": "Describe the bounded adapter use.",
+  "platforms": ["windows", "linux", "macos"],
+  "linkage": "static",
+  "source_modifications": false,
+  "patches": [],
+  "security_update_policy": "Review upstream security advisories monthly.",
+  "replacement_removal_path": "Remove the matching adapter and build feature.",
+  "replacement_cost": "low",
+  "owner": "foundation-maintainers"
+}

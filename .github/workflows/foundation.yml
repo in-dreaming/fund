@@ -1,0 +1,34 @@
+name: Foundation
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  foundation:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+      - name: Format check
+        working-directory: foundation
+        run: zig fmt --check build.zig src adapters tests examples tools
+      - name: Governance checks
+        working-directory: foundation
+        run: zig build check
+      - name: Default build and tests
+        working-directory: foundation
+        run: zig build test
+      - name: Core build and tests
+        working-directory: foundation
+        run: zig build -Dprofile=core test
+      - name: C header syntax
+        working-directory: foundation
+        shell: bash
+        run: printf '#include "foundation.h"\nint main(void) { return 0; }\n' | zig cc -x c -c -I "$PWD/include" -o /dev/null -
