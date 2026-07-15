@@ -8,6 +8,9 @@ pub const memory = @import("memory/shared_buffer.zig");
 pub const time = @import("time/time.zig");
 pub const cancellation = @import("async/cancellation.zig");
 pub const shutdown = @import("async/shutdown.zig");
+pub const executor = @import("executor/executor.zig");
+pub const future = @import("async/future.zig");
+pub const operation = @import("async/operation.zig");
 
 test "foundation module loads" {
     _ = build_options.profile;
