@@ -11,6 +11,7 @@ pub const shutdown = @import("async/shutdown.zig");
 pub const executor = @import("executor/executor.zig");
 pub const future = @import("async/future.zig");
 pub const operation = @import("async/operation.zig");
+pub const channel = @import("channel/channel.zig");
 
 test "foundation module loads" {
     _ = build_options.profile;
