@@ -1,6 +1,16 @@
 const std = @import("std");
 const time = @import("../time/time.zig");
 
+const Mutex = struct {
+    state: std.atomic.Mutex = .unlocked,
+    fn lock(self: *Mutex) void {
+        while (!self.state.tryLock()) std.atomic.spinLoopHint();
+    }
+    fn unlock(self: *Mutex) void {
+        self.state.unlock();
+    }
+};
+
 /// The first cancellation request permanently selects the reason.
 pub const CancelReason = enum { requested, timeout, owner_destroyed, shutdown };
 
@@ -11,7 +21,7 @@ const Callback = struct { id: u64, function: CancelCallback, userdata: ?*anyopaq
 const State = struct {
     allocator: std.mem.Allocator,
     references: std.atomic.Value(u32) = std.atomic.Value(u32).init(1),
-    mutex: std.Thread.Mutex = .{},
+    mutex: Mutex = .{},
     cancelled: bool = false,
     reason: ?CancelReason = null,
     next_callback_id: u64 = 1,
@@ -68,7 +78,7 @@ pub const CancellationSource = struct {
 
     pub fn deinit(self: *CancellationSource) void {
         const state = self.state orelse return;
-        self.cancel(.owner_destroyed);
+        _ = self.cancel(.owner_destroyed);
         if (self.parent_registration) |*registration| registration.deinit();
         self.parent_registration = null;
         if (self.parent_child_state) |child_state| child_state.release();

@@ -1,0 +1,18 @@
+{
+  "name": "libcurl",
+  "version": "8.21.0_3",
+  "source": {
+    "url": "https://curl.se/windows/dl-8.21.0_3/curl-8.21.0_3-win64-mingw.zip",
+    "ref": "773920297b25a38193f9f28a496981eceee71d6ec658e5607227681be575f976"
+  },
+  "license": { "name": "curl", "file": "licenses/curl.txt" },
+  "purpose": "Optional production HTTP/TLS transport adapter for Windows x64.",
+  "platforms": ["windows-x64"],
+  "linkage": "dynamic",
+  "source_modifications": false,
+  "patches": [],
+  "security_update_policy": "Review curl security advisories monthly and replace the pinned bundle for security fixes.",
+  "replacement_removal_path": "Disable -Dhttp and remove adapters/curl plus third_party/curl.",
+  "replacement_cost": "medium",
+  "owner": "foundation-maintainers"
+}

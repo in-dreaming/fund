@@ -1,0 +1,282 @@
+commit 06b46ec9189be3a49c78a283b625882d8a6e3237
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2026-06-27
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2026-06-27
+
+    Bump package and library versions
+
+commit 59e2344bf381912d079c68eec246c2ba52b0a8bf
+Merge: f7e90d0 c5ca51f
+Author:     Tatsuhiro Tsujikawa <404610+tatsuhiro-t@users.noreply.github.com>
+AuthorDate: 2026-06-26
+Commit:     GitHub <noreply@github.com>
+CommitDate: 2026-06-26
+
+    Merge pull request #531 from ngtcp2/update-doc
+    
+    Add missing version-added
+
+commit c5ca51f4d28dda42810f55c20d3828037fb9adb4
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2026-06-26
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2026-06-26
+
+    Add missing version-added
+
+commit f7e90d0404e357f95a4e6b4b51d21541890fd11b
+Merge: f4c3c8d 18ab46d
+Author:     Tatsuhiro Tsujikawa <404610+tatsuhiro-t@users.noreply.github.com>
+AuthorDate: 2026-06-25
+Commit:     GitHub <noreply@github.com>
+CommitDate: 2026-06-25
+
+    Merge pull request #530 from ngtcp2/dependabot/github_actions/actions/checkout-7
+    
+    build(deps): bump actions/checkout from 6 to 7
+
+commit 18ab46d4a1626789a6e497a523337e60ba6117cc
+Author:     dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>
+AuthorDate: 2026-06-22
+Commit:     GitHub <noreply@github.com>
+CommitDate: 2026-06-22
+
+    build(deps): bump actions/checkout from 6 to 7
+    
+    Bumps [actions/checkout](https://github.com/actions/checkout) from 6 to 7.
+    - [Release notes](https://github.com/actions/checkout/releases)
+    - [Changelog](https://github.com/actions/checkout/blob/main/CHANGELOG.md)
+    - [Commits](https://github.com/actions/checkout/compare/v6...v7)
+    
+    ---
+    updated-dependencies:
+    - dependency-name: actions/checkout
+      dependency-version: '7'
+      dependency-type: direct:production
+      update-type: version-update:semver-major
+    ...
+    
+    Signed-off-by: dependabot[bot] <support@github.com>
+
+commit f4c3c8daed121ee506d799505c6aa72a6ed56c75
+Merge: 056fbdf 77aa353
+Author:     Tatsuhiro Tsujikawa <404610+tatsuhiro-t@users.noreply.github.com>
+AuthorDate: 2026-06-18
+Commit:     GitHub <noreply@github.com>
+CommitDate: 2026-06-18
+
+    Merge pull request #529 from ngtcp2/varint
+    
+    lib: Add the public API to encode and decode variable-length integer
+
+commit 77aa3535268fd21546b31d962bd013d459831b8f
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2025-12-10
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2026-06-18
+
+    lib: Add the public API to encode and decode variable-length integer
+
+commit 056fbdf9102c4fbc40844dd1ae83d467af31dbeb
+Merge: b82090d 35b8f2c
+Author:     Tatsuhiro Tsujikawa <404610+tatsuhiro-t@users.noreply.github.com>
+AuthorDate: 2026-06-14
+Commit:     GitHub <noreply@github.com>
+CommitDate: 2026-06-14
+
+    Merge pull request #527 from ngtcp2/bump-sfparse
+    
+    Bump sfparse
+
+commit 35b8f2c2e8ceead98d35afc449b869e32c9da05e
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2026-06-14
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2026-06-14
+
+    Bump sfparse
+
+commit b82090dbce99969eb13b6599fee9a24389901953
+Merge: e45c583 7523909
+Author:     Tatsuhiro Tsujikawa <404610+tatsuhiro-t@users.noreply.github.com>
+AuthorDate: 2026-06-14
+Commit:     GitHub <noreply@github.com>
+CommitDate: 2026-06-14
+
+    Merge pull request #526 from ngtcp2/stream-not-found-flushed
+    
+    lib: Treat non-existent stream flushed
+
+commit 75239094957aae8753e613968270a113b91058f7
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2026-06-14
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2026-06-14
+
+    lib: Treat non-existent stream flushed
+
+commit e45c58399647c7c5b9676d804eb1f0ef2bb0cc25
+Merge: 679f4cb a7cb5f0
+Author:     Tatsuhiro Tsujikawa <404610+tatsuhiro-t@users.noreply.github.com>
+AuthorDate: 2026-06-08
+Commit:     GitHub <noreply@github.com>
+CommitDate: 2026-06-08
+
+    Merge pull request #525 from ngtcp2/update-doc
+    
+    Update doc
+
+commit a7cb5f09525bb2e73275d8667cf690fd889c9b57
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2026-06-08
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2026-06-08
+
+    Update doc
+
+commit 679f4cb21e2d368c53e3bde6682be3d39024b901
+Merge: d5c1319 84153b9
+Author:     Tatsuhiro Tsujikawa <404610+tatsuhiro-t@users.noreply.github.com>
+AuthorDate: 2026-06-07
+Commit:     GitHub <noreply@github.com>
+CommitDate: 2026-06-07
+
+    Merge pull request #524 from ngtcp2/reformat-huffman-table
+    
+    Reformat huffman data tables
+
+commit 84153b9e9b40937c7af31cd8914f04ae32cbe75f
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2026-06-07
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2026-06-07
+
+    Reformat huffman data tables
+
+commit d5c1319d30e25da29d6bac3612b0826ccd23f5dd
+Merge: c9347d3 5bfb9de
+Author:     Tatsuhiro Tsujikawa <404610+tatsuhiro-t@users.noreply.github.com>
+AuthorDate: 2026-06-07
+Commit:     GitHub <noreply@github.com>
+CommitDate: 2026-06-07
+
+    Merge pull request #523 from ngtcp2/update-scripts
+    
+    Update scripts
+
+commit 5bfb9deca0136336e696d5d7395cd60f7d74493b
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2026-06-07
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2026-06-07
+
+    Update scripts
+    
+    Remove unused genchartbl.py and gennmchartbl.py.
+
+commit c9347d34671c39a5fab10d1031f0b47ef3bf09cd
+Merge: 4914d9d 3cc5c5f
+Author:     Tatsuhiro Tsujikawa <404610+tatsuhiro-t@users.noreply.github.com>
+AuthorDate: 2026-06-07
+Commit:     GitHub <noreply@github.com>
+CommitDate: 2026-06-07
+
+    Merge pull request #522 from ngtcp2/stream-flushed-with-non-data
+    
+    lib: Take into account non-DATA frame in nghttp3_conn_is_stream_flushed
+
+commit 3cc5c5f9d1bab959449e146c20d13aacff6d5a43
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2026-06-07
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2026-06-07
+
+    lib: Take into account non-DATA frame in nghttp3_conn_is_stream_flushed
+
+commit 4914d9dc4ac125f1adadf53e527891fa166d69fc
+Merge: 26c7ca1 6ff16e2
+Author:     Tatsuhiro Tsujikawa <404610+tatsuhiro-t@users.noreply.github.com>
+AuthorDate: 2026-06-07
+Commit:     GitHub <noreply@github.com>
+CommitDate: 2026-06-07
+
+    Merge pull request #521 from ngtcp2/stream-flushed
+    
+    Add nghttp3_conn_stream_flushed
+
+commit 6ff16e2c106781d0b41bbb13ad8db70cb70c57cd
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2026-06-07
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2026-06-07
+
+    Add nghttp3_conn_stream_flushed
+    
+    nghttp3_conn_stream_flushed tells that all stream data held so far
+    have been accepted by QUIC stack.
+
+commit 26c7ca1d1a3dc35813e0c32529387492b724dc38
+Merge: 91c6603 87a404d
+Author:     Tatsuhiro Tsujikawa <404610+tatsuhiro-t@users.noreply.github.com>
+AuthorDate: 2026-06-06
+Commit:     GitHub <noreply@github.com>
+CommitDate: 2026-06-06
+
+    Merge pull request #520 from ngtcp2/reformat-downcase-tbl
+    
+    lib: Reformat downcase table
+
+commit 87a404d71d1c50860b0d708dcba1535769405840
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2026-06-06
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2026-06-06
+
+    lib: Reformat downcase table
+
+commit 91c6603b782b191b3ac6911bbbf11a7c00e02a77
+Merge: 9248fb8 017ed70
+Author:     Tatsuhiro Tsujikawa <404610+tatsuhiro-t@users.noreply.github.com>
+AuthorDate: 2026-06-04
+Commit:     GitHub <noreply@github.com>
+CommitDate: 2026-06-04
+
+    Merge pull request #519 from ngtcp2/fix-check-header-name
+    
+    lib: Fix header name validation
+
+commit 017ed708f2bb7002f7c6aec72fb7164f6de8b1b1
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2026-06-04
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2026-06-04
+
+    lib: Fix header name validation
+
+commit 9248fb86363ff1e13c6e4db9fad85e87e137b154
+Merge: 9cd5e94 c8e2d0c
+Author:     Tatsuhiro Tsujikawa <404610+tatsuhiro-t@users.noreply.github.com>
+AuthorDate: 2026-06-04
+Commit:     GitHub <noreply@github.com>
+CommitDate: 2026-06-04
+
+    Merge pull request #518 from ngtcp2/downcase
+    
+    lib: Add nghttp3_downcase_byte
+
+commit c8e2d0c9fe8229cab2640563259610a67f48dbf0
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2026-06-04
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2026-06-04
+
+    lib: Add nghttp3_downcase_byte
+
+commit 9cd5e9482c34af2cb1fc365790905934b620cfd1
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2026-05-31
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2026-05-31
+
+    Bump package version

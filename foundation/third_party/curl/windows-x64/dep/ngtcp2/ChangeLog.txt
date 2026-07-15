@@ -1,0 +1,402 @@
+commit 956e7b4cfb6762312434ecdddb796baf0775f12a
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2026-06-28
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2026-06-28
+
+    Bump package and library versions
+
+commit eb5dbfc867ac1f4a355982e0945c561d7ac6c5e2
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2026-06-28
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2026-06-28
+
+    Update AUTHORS
+
+commit fa79a9e18536091290e3c86dea33c1d042a8874b
+Merge: 7a22bb07 9193269e
+Author:     Tatsuhiro Tsujikawa <404610+tatsuhiro-t@users.noreply.github.com>
+AuthorDate: 2026-06-27
+Commit:     GitHub <noreply@github.com>
+CommitDate: 2026-06-27
+
+    Merge pull request #2226 from ngtcp2/bump-wolfssl
+    
+    Bump wolfssl to v5.9.2-stable
+
+commit 9193269e68d41771cb5d680eed437553b5c8319a
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2026-06-27
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2026-06-27
+
+    Bump wolfssl to v5.9.2-stable
+
+commit 7a22bb07322448be589b1453fba7dca0c9246a18
+Merge: 645d0075 7800538b
+Author:     Tatsuhiro Tsujikawa <404610+tatsuhiro-t@users.noreply.github.com>
+AuthorDate: 2026-06-27
+Commit:     GitHub <noreply@github.com>
+CommitDate: 2026-06-27
+
+    Merge pull request #2225 from ngtcp2/bump-picotls
+    
+    Bump picotls
+
+commit 7800538b751ff78af74786c9fc788dc8b2518c75
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2026-06-27
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2026-06-27
+
+    Bump picotls
+
+commit 645d0075f2a6dd358a6d54d7d1473a1da9642910
+Merge: 4d253b5a 4a485843
+Author:     Tatsuhiro Tsujikawa <404610+tatsuhiro-t@users.noreply.github.com>
+AuthorDate: 2026-06-27
+Commit:     GitHub <noreply@github.com>
+CommitDate: 2026-06-27
+
+    Merge pull request #2224 from ngtcp2/bump-aws-lc
+    
+    Bump aws-lc to v5.1.0
+
+commit 4a485843a63f624c1e3a90db75acc4dcb4294e84
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2026-06-27
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2026-06-27
+
+    Bump aws-lc to v5.1.0
+
+commit 4d253b5a3ef6e6f3201241c714e70c6ff73877c9
+Merge: 0c0617df 2165f93e
+Author:     Tatsuhiro Tsujikawa <404610+tatsuhiro-t@users.noreply.github.com>
+AuthorDate: 2026-06-27
+Commit:     GitHub <noreply@github.com>
+CommitDate: 2026-06-27
+
+    Merge pull request #2223 from ngtcp2/bump-boringssl
+    
+    Bump boringssl
+
+commit 2165f93eddc5bee7248ea1e9c11e6569dc21edf2
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2026-06-27
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2026-06-27
+
+    Bump boringssl
+
+commit 0c0617dfca88eed41153205e9faaedb499a59cb7
+Merge: d7859552 00ab8cde
+Author:     Tatsuhiro Tsujikawa <404610+tatsuhiro-t@users.noreply.github.com>
+AuthorDate: 2026-06-27
+Commit:     GitHub <noreply@github.com>
+CommitDate: 2026-06-27
+
+    Merge pull request #2222 from ngtcp2/bump-openssl
+    
+    Bump openssl to v4.0.1
+
+commit 00ab8cde1484d899bfcdff25cf9c1925a0dbf08b
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2026-06-27
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2026-06-27
+
+    Bump openssl to v4.0.1
+
+commit d78595522ff0ade600c395e91a5f82a409b8ebcf
+Merge: d8f99488 db28d58e
+Author:     Tatsuhiro Tsujikawa <404610+tatsuhiro-t@users.noreply.github.com>
+AuthorDate: 2026-06-26
+Commit:     GitHub <noreply@github.com>
+CommitDate: 2026-06-26
+
+    Merge pull request #2221 from ngtcp2/simplify-app-limited-cond
+    
+    lib: Simplify app-limited conditions
+
+commit db28d58e8ef60ec42ad5bb109eea5631921d777a
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2026-06-26
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2026-06-26
+
+    lib: Simplify app-limited conditions
+    
+    Remove the additional conditions that are not proven correct.
+
+commit d8f99488399fe29dad7a5e59b9d50518c6c62a1a
+Merge: 40f7ec64 248b36ae
+Author:     Tatsuhiro Tsujikawa <404610+tatsuhiro-t@users.noreply.github.com>
+AuthorDate: 2026-06-24
+Commit:     GitHub <noreply@github.com>
+CommitDate: 2026-06-24
+
+    Merge pull request #2220 from ngtcp2/dependabot/github_actions/actions/checkout-7
+    
+    build(deps): bump actions/checkout from 6 to 7
+
+commit 248b36ae32e2241770bd42001e8461c17cae1df9
+Author:     dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>
+AuthorDate: 2026-06-22
+Commit:     GitHub <noreply@github.com>
+CommitDate: 2026-06-22
+
+    build(deps): bump actions/checkout from 6 to 7
+    
+    Bumps [actions/checkout](https://github.com/actions/checkout) from 6 to 7.
+    - [Release notes](https://github.com/actions/checkout/releases)
+    - [Changelog](https://github.com/actions/checkout/blob/main/CHANGELOG.md)
+    - [Commits](https://github.com/actions/checkout/compare/v6...v7)
+    
+    ---
+    updated-dependencies:
+    - dependency-name: actions/checkout
+      dependency-version: '7'
+      dependency-type: direct:production
+      update-type: version-update:semver-major
+    ...
+    
+    Signed-off-by: dependabot[bot] <support@github.com>
+
+commit 40f7ec64c70528afb16553e023af4d1c3d3183cf
+Merge: c8cc2c13 73b96882
+Author:     Tatsuhiro Tsujikawa <404610+tatsuhiro-t@users.noreply.github.com>
+AuthorDate: 2026-06-18
+Commit:     GitHub <noreply@github.com>
+CommitDate: 2026-06-18
+
+    Merge pull request #2218 from ngtcp2/tweak-app-limited-detection
+    
+    lib: Tweak app-limited detection
+
+commit 73b96882842311616bd27361d7d3879aa5e174c0
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2026-06-17
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2026-06-17
+
+    lib: Tweak app-limited detection
+    
+    Count "application data" frames to decide the current flow is
+    app-limited or not.
+
+commit c8cc2c1365b6a1f1dcb35733a99b7d2fc3333a71
+Merge: 5a767009 b36da76a
+Author:     Tatsuhiro Tsujikawa <404610+tatsuhiro-t@users.noreply.github.com>
+AuthorDate: 2026-06-16
+Commit:     GitHub <noreply@github.com>
+CommitDate: 2026-06-16
+
+    Merge pull request #2216 from ngtcp2/wf
+    
+    Rewrite window filter from scratch
+
+commit b36da76ae8baa894eeccceea83e438e18196e1ca
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2026-06-16
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2026-06-16
+
+    Rewrite window filter from scratch
+
+commit 5a767009ddd0a95ddd38c2b7ad216f7354ee7d48
+Merge: 281e0a7b 2d2cafe9
+Author:     Tatsuhiro Tsujikawa <404610+tatsuhiro-t@users.noreply.github.com>
+AuthorDate: 2026-06-16
+Commit:     GitHub <noreply@github.com>
+CommitDate: 2026-06-16
+
+    Merge pull request #2213 from ngtcp2/remove-max-stream-data-thresh
+    
+    Remove max stream data thresh
+
+commit 2d2cafe9f637dcd6a9f3364b2306e7c98d1226c2
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2026-06-15
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2026-06-15
+
+    Revert "lib: Add ngtcp2_conn_set_max_stream_data_thresh"
+    
+    This reverts commit 81566c793a71d8fa9365a6d4c5f4d5ab2c11d421.
+
+commit 9c48b8b1cee2bc678ab42ddb64f1f61503dfac06
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2026-06-15
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2026-06-15
+
+    Revert "lib: Tweak ngtcp2_conn_set_max_stream_data_thresh"
+    
+    This reverts commit 00c58dd79554904917e71cc273cfabb9403e266e.
+
+commit 281e0a7b0bcf3db3eba50a2fca0fd704a3ef11b9
+Merge: 189482b6 00c58dd7
+Author:     Tatsuhiro Tsujikawa <404610+tatsuhiro-t@users.noreply.github.com>
+AuthorDate: 2026-06-13
+Commit:     GitHub <noreply@github.com>
+CommitDate: 2026-06-13
+
+    Merge pull request #2212 from ngtcp2/tweak-max-stream-data-thresh
+    
+    lib: Tweak ngtcp2_conn_set_max_stream_data_thresh
+
+commit 00c58dd79554904917e71cc273cfabb9403e266e
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2026-06-13
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2026-06-13
+
+    lib: Tweak ngtcp2_conn_set_max_stream_data_thresh
+    
+    Make ngtcp2_conn_set_max_stream_data_thresh noop if stream-level
+    window auto-tuning is enabled.  Reuse ngtcp2_strm.rx.window to store
+    threshold.
+
+commit 189482b6adaa565b8b65a39a19cac8dec18d9346
+Merge: 97b2dc1c 81566c79
+Author:     Tatsuhiro Tsujikawa <404610+tatsuhiro-t@users.noreply.github.com>
+AuthorDate: 2026-06-12
+Commit:     GitHub <noreply@github.com>
+CommitDate: 2026-06-12
+
+    Merge pull request #2211 from ngtcp2/max-stream-data-thresh
+    
+    lib: Add ngtcp2_conn_set_max_stream_data_thresh
+
+commit 81566c793a71d8fa9365a6d4c5f4d5ab2c11d421
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2026-06-12
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2026-06-12
+
+    lib: Add ngtcp2_conn_set_max_stream_data_thresh
+
+commit 97b2dc1c29410dfc616d66de529a0e48340c2766
+Merge: 9496b2da 589a9520
+Author:     Tatsuhiro Tsujikawa <404610+tatsuhiro-t@users.noreply.github.com>
+AuthorDate: 2026-06-11
+Commit:     GitHub <noreply@github.com>
+CommitDate: 2026-06-11
+
+    Merge pull request #2210 from httptoolkit/stop-sending-callback
+    
+    lib: Add recv_stop_sending callback
+
+commit 589a952022ba8463fa0d074c719b680dccc2c902
+Author:     Tim Perry <pimterry@gmail.com>
+AuthorDate: 2026-06-10
+Commit:     Tim Perry <pimterry@gmail.com>
+CommitDate: 2026-06-10
+
+    Follow correct callback setup patterns in tests
+
+commit d63a772432cccfe299d217e19afb70b24788d599
+Author:     Tim Perry <pimterry@gmail.com>
+AuthorDate: 2026-06-08
+Commit:     Tim Perry <pimterry@gmail.com>
+CommitDate: 2026-06-08
+
+    lib: Add recv_stop_sending callback
+    
+    This is a new optional callback that fires when a remote STOP_SENDING
+    frame is received. Until now, the only way to observe this was detecting
+    the SHUT_WR error on the next write - which would never happen for
+    streams blocked by flow control.
+
+commit 9496b2da0d968f0ab1d5da689effe4d28eb6ead4
+Merge: 6933bd53 8d0f30fe
+Author:     Tatsuhiro Tsujikawa <404610+tatsuhiro-t@users.noreply.github.com>
+AuthorDate: 2026-06-04
+Commit:     GitHub <noreply@github.com>
+CommitDate: 2026-06-04
+
+    Merge pull request #2209 from ngtcp2/avoid-deprecated-nghttp3-apis
+    
+    examples: Avoid the deprecated nghttp3 APIs
+
+commit 8d0f30fe76a78c5b878db0d73bf6cff3e00ac17b
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2026-06-04
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2026-06-04
+
+    examples: Avoid the deprecated nghttp3 APIs
+
+commit 6933bd53d8ceca38d9ffef67a1e0793101362691
+Merge: f94aece9 1a2e4c1d
+Author:     Tatsuhiro Tsujikawa <404610+tatsuhiro-t@users.noreply.github.com>
+AuthorDate: 2026-06-04
+Commit:     GitHub <noreply@github.com>
+CommitDate: 2026-06-04
+
+    Merge pull request #2208 from ngtcp2/ossl-free
+    
+    crypto: Add ngtcp2_crypto_ossl_free
+
+commit 1a2e4c1d427f3870d964b63880a080f4b0b061be
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2026-06-04
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2026-06-04
+
+    crypto: Add ngtcp2_crypto_ossl_free
+
+commit f94aece914687b34d6762a79bb9444985b785c56
+Merge: f059c502 8ead0e3c
+Author:     Tatsuhiro Tsujikawa <404610+tatsuhiro-t@users.noreply.github.com>
+AuthorDate: 2026-06-02
+Commit:     GitHub <noreply@github.com>
+CommitDate: 2026-06-02
+
+    Merge pull request #2206 from ngtcp2/add-disable-cryptotest
+    
+    Add --disable-crypto configure option
+
+commit 8ead0e3cd54ebdcc9c713d162f245f335416ca49
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2026-06-02
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2026-06-02
+
+    Add --disable-crypto configure option
+    
+    We have some issues in cryptotest when linked with OpenSSL that is not
+    libtool project, especially when ngtcp2 is built in third-party
+    projects where it is not desirable to set rpath.  To workaround this
+    issue, add --disable-crypto configure option that disables cryptotest.
+
+commit f059c5021624e2d8e8da18704fd2499b21f29dad
+Merge: ef240d0e 1892f37d
+Author:     Tatsuhiro Tsujikawa <404610+tatsuhiro-t@users.noreply.github.com>
+AuthorDate: 2026-06-02
+Commit:     GitHub <noreply@github.com>
+CommitDate: 2026-06-02
+
+    Merge pull request #2205 from ngtcp2/cryptotest-add-openssl-libs
+    
+    crypto: Add openssl libs to cryptotest
+
+commit 1892f37daa42be3ee84605abf51f491f50b62333
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2026-06-02
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2026-06-02
+
+    crypto: Add openssl libs to cryptotest
+    
+    This is needed because openssl is not a libtool project.
+
+commit ef240d0e4eb0743de42871b9f35eef336e9707e8
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2026-05-31
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2026-05-31
+
+    Bump package version

@@ -92,6 +92,19 @@ pub fn build(b: *std.Build) void {
         test_step.dependOn(&run_yyjson_tests.step);
     }
 
+    if (enable_http) {
+        const curl_module = b.createModule(.{
+            .root_source_file = b.path("adapters/curl/curl.zig"),
+            .target = target,
+            .optimize = optimize,
+            .link_libc = true,
+        });
+        curl_module.addImport("foundation", foundation);
+        const curl_tests = b.addTest(.{ .root_module = curl_module });
+        const run_curl_tests = b.addRunArtifact(curl_tests);
+        test_step.dependOn(&run_curl_tests.step);
+    }
+
     const dependency_check = b.addSystemCommand(&.{ "zig", "run", "tools/dependency_check.zig", "--", "third_party/manifests/entries" });
     const dependency_step = b.step("dependency-check", "Validate dependency manifests");
     dependency_step.dependOn(&dependency_check.step);
