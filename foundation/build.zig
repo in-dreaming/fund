@@ -138,6 +138,25 @@ pub fn build(b: *std.Build) void {
     const test_step = b.step("test", "Run Foundation tests");
     test_step.dependOn(&run_tests.step);
 
+    const benchmark = b.addExecutable(.{
+        .name = "foundation_benchmark",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("benchmarks/foundation_benchmark.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+    });
+    benchmark.root_module.addImport("foundation", foundation);
+    const run_benchmark = b.addRunArtifact(benchmark);
+    if (b.args) |args| run_benchmark.addArgs(args);
+    const benchmark_step = b.step("benchmark", "Run one Foundation benchmark and emit a JSON result");
+    benchmark_step.dependOn(&run_benchmark.step);
+
+    const benchmark_smoke_run = b.addRunArtifact(benchmark);
+    benchmark_smoke_run.addArgs(&.{ "--samples", "1", "--warmup", "0", "--machine", "ci-smoke" });
+    const benchmark_smoke = b.step("benchmark-smoke", "Compile and run a calibrated-threshold-free benchmark smoke check");
+    benchmark_smoke.dependOn(&benchmark_smoke_run.step);
+
     if (enable_yyjson) {
         const yyjson_module = b.createModule(.{
             .root_source_file = b.path("adapters/yyjson/yyjson.zig"),

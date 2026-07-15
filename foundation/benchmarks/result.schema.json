@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Foundation platform optimization benchmark result",
+  "type": "object",
+  "required": ["schema_version", "profile", "workload", "warmup_samples", "measured_samples", "iterations_per_sample", "toolchain", "machine", "latency_ns", "throughput_ops_per_second", "allocation_events", "allocation_high_water_bytes", "cpu_time_ns", "binary_size_bytes", "cancellation_latency_ns", "shutdown_time_ns", "sample_latency_ns"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "profile": { "enum": ["core", "game", "agent", "tooling", "server"] },
+    "workload": { "enum": ["core", "game", "agent", "tooling", "server"] },
+    "warmup_samples": { "type": "integer", "minimum": 0 },
+    "measured_samples": { "type": "integer", "minimum": 1 },
+    "iterations_per_sample": { "type": "integer", "minimum": 1 },
+    "toolchain": { "type": "string" },
+    "machine": { "type": "string" },
+    "latency_ns": { "type": "object" },
+    "throughput_ops_per_second": { "type": "number" },
+    "allocation_events": { "type": "integer", "minimum": 0 },
+    "allocation_high_water_bytes": { "type": "integer", "minimum": 0 },
+    "cpu_time_ns": { "type": ["integer", "null"] },
+    "binary_size_bytes": { "type": ["integer", "null"] },
+    "cancellation_latency_ns": { "type": "integer", "minimum": 0 },
+    "shutdown_time_ns": { "type": "integer", "minimum": 0 },
+    "sample_latency_ns": { "type": "array", "items": { "type": "integer", "minimum": 0 } }
+  }
+}

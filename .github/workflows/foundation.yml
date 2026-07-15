@@ -18,7 +18,7 @@ jobs:
           version: 0.16.0
       - name: Format check
         working-directory: foundation
-        run: zig fmt --check build.zig src adapters tests examples tools
+        run: zig fmt --check build.zig src adapters tests examples tools benchmarks
       - name: Governance checks
         working-directory: foundation
         run: zig build check
@@ -31,6 +31,9 @@ jobs:
       - name: Core consumer example
         working-directory: foundation
         run: zig build -Dprofile=core examples-test
+      - name: Benchmark smoke check
+        working-directory: foundation
+        run: zig build -Dprofile=core benchmark-smoke
       - name: C header syntax
         working-directory: foundation
         shell: bash
@@ -55,6 +58,9 @@ jobs:
       - name: ABI consumers
         working-directory: foundation
         run: zig build -Dprofile=${{ matrix.profile }} cabi-test
+      - name: Benchmark smoke check
+        working-directory: foundation
+        run: zig build -Dprofile=${{ matrix.profile }} benchmark-smoke
   portable-profiles:
     runs-on: ubuntu-latest
     steps:
