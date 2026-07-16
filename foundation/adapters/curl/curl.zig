@@ -164,9 +164,9 @@ pub const CurlClient = struct {
             http.finish(pending.operation, http.failureResult(pending.allocator, .{ .category = .resource_exhausted, .message = "curl header allocation failed" }));
             return;
         };
-        var response = std.ArrayListUnmanaged(u8){};
+        var response: std.ArrayListUnmanaged(u8) = .empty;
         defer response.deinit(pending.allocator);
-        var response_headers = std.ArrayListUnmanaged(http.Header){};
+        var response_headers: std.ArrayListUnmanaged(http.Header) = .empty;
         defer freeResponseHeaders(pending.allocator, &response_headers);
         var context = CallbackContext{ .allocator = pending.allocator, .response = &response, .headers = &response_headers, .limit = pending.options.response_body_limit, .cancelled = &token };
         if (!set(self.api.easy_setopt(easy, CURLOPT_URL, pending.url.ptr)) or !set(self.api.easy_setopt(easy, CURLOPT_CUSTOMREQUEST, pending.method.ptr)) or !set(self.api.easy_setopt(easy, CURLOPT_NOSIGNAL, @as(c_long, 1))) or !set(self.api.easy_setopt(easy, CURLOPT_TIMEOUT_MS, @as(c_long, @intCast(@min(pending.options.timeout_ms, std.math.maxInt(c_long)))))) or !set(self.api.easy_setopt(easy, CURLOPT_WRITEFUNCTION, writeCallback)) or !set(self.api.easy_setopt(easy, CURLOPT_WRITEDATA, &context)) or !set(self.api.easy_setopt(easy, CURLOPT_HEADERFUNCTION, headerCallback)) or !set(self.api.easy_setopt(easy, CURLOPT_HEADERDATA, &context))) {
@@ -235,7 +235,9 @@ fn copyHeaders(allocator: std.mem.Allocator, headers: []const http.Header) ![][:
     var initialized: usize = 0;
     errdefer for (output[0..initialized]) |header| allocator.free(header);
     for (headers) |header| {
-        output[initialized] = try std.fmt.allocPrintZ(allocator, "{s}: {s}", .{ header.name, header.value });
+        const formatted = try std.fmt.allocPrint(allocator, "{s}: {s}", .{ header.name, header.value });
+        defer allocator.free(formatted);
+        output[initialized] = try allocator.dupeZ(u8, formatted);
         initialized += 1;
     }
     return output;

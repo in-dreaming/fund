@@ -188,7 +188,7 @@ pub fn build(b: *std.Build) void {
     }
 
     if (enable_http) {
-        const curl_module = b.createModule(.{
+        const curl_module = b.addModule("curl_adapter", .{
             .root_source_file = b.path("adapters/curl/curl.zig"),
             .target = target,
             .optimize = optimize,
