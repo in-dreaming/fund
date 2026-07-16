@@ -30,6 +30,10 @@ const CURLOPT_SSLKEY: c_uint = 10087;
 const CURLOPT_NOSIGNAL: c_uint = 99;
 const CURLOPT_POSTFIELDSIZE_LARGE: c_uint = 30120;
 const CURLOPT_TIMEOUT_MS: c_uint = 155;
+const CURLOPT_CONNECTTIMEOUT_MS: c_uint = 156;
+const CURLOPT_NOPROGRESS: c_uint = 43;
+const CURLOPT_XFERINFODATA: c_uint = 10057;
+const CURLOPT_XFERINFOFUNCTION: c_uint = 20219;
 const CURLINFO_RESPONSE_CODE: c_uint = 0x200002;
 
 const EasyInit = *const fn () callconv(.c) CURL;
@@ -97,6 +101,7 @@ const Pending = struct {
     body: []u8,
     headers: [][:0]u8,
     options: http.Options,
+    stream: ?http.Stream = null,
     ca_bundle_path: ?[:0]u8 = null,
     client_certificate_path: ?[:0]u8 = null,
     client_key_path: ?[:0]u8 = null,
@@ -168,8 +173,8 @@ pub const CurlClient = struct {
         defer response.deinit(pending.allocator);
         var response_headers: std.ArrayListUnmanaged(http.Header) = .empty;
         defer freeResponseHeaders(pending.allocator, &response_headers);
-        var context = CallbackContext{ .allocator = pending.allocator, .response = &response, .headers = &response_headers, .limit = pending.options.response_body_limit, .cancelled = &token };
-        if (!set(self.api.easy_setopt(easy, CURLOPT_URL, pending.url.ptr)) or !set(self.api.easy_setopt(easy, CURLOPT_CUSTOMREQUEST, pending.method.ptr)) or !set(self.api.easy_setopt(easy, CURLOPT_NOSIGNAL, @as(c_long, 1))) or !set(self.api.easy_setopt(easy, CURLOPT_TIMEOUT_MS, @as(c_long, @intCast(@min(pending.options.timeout_ms, std.math.maxInt(c_long)))))) or !set(self.api.easy_setopt(easy, CURLOPT_WRITEFUNCTION, writeCallback)) or !set(self.api.easy_setopt(easy, CURLOPT_WRITEDATA, &context)) or !set(self.api.easy_setopt(easy, CURLOPT_HEADERFUNCTION, headerCallback)) or !set(self.api.easy_setopt(easy, CURLOPT_HEADERDATA, &context))) {
+        var context = CallbackContext{ .allocator = pending.allocator, .response = &response, .headers = &response_headers, .limit = pending.options.response_body_limit, .cancelled = &token, .stream = pending.stream, .started_ns = monotonicNow(), .first_byte_timeout_ns = pending.options.first_byte_timeout_ms *| std.time.ns_per_ms };
+        if (!set(self.api.easy_setopt(easy, CURLOPT_URL, pending.url.ptr)) or !set(self.api.easy_setopt(easy, CURLOPT_CUSTOMREQUEST, pending.method.ptr)) or !set(self.api.easy_setopt(easy, CURLOPT_NOSIGNAL, @as(c_long, 1))) or !set(self.api.easy_setopt(easy, CURLOPT_CONNECTTIMEOUT_MS, @as(c_long, @intCast(@min(pending.options.connect_timeout_ms, std.math.maxInt(c_long)))))) or !set(self.api.easy_setopt(easy, CURLOPT_TIMEOUT_MS, @as(c_long, @intCast(@min(pending.options.timeout_ms, std.math.maxInt(c_long)))))) or !set(self.api.easy_setopt(easy, CURLOPT_NOPROGRESS, @as(c_long, 0))) or !set(self.api.easy_setopt(easy, CURLOPT_XFERINFOFUNCTION, progressCallback)) or !set(self.api.easy_setopt(easy, CURLOPT_XFERINFODATA, &context)) or !set(self.api.easy_setopt(easy, CURLOPT_WRITEFUNCTION, writeCallback)) or !set(self.api.easy_setopt(easy, CURLOPT_WRITEDATA, &context)) or !set(self.api.easy_setopt(easy, CURLOPT_HEADERFUNCTION, headerCallback)) or !set(self.api.easy_setopt(easy, CURLOPT_HEADERDATA, &context))) {
             http.finish(pending.operation, http.failureResult(pending.allocator, .{ .category = .internal, .message = "curl option setup failed" }));
             return;
         }
@@ -182,7 +187,9 @@ pub const CurlClient = struct {
         applyOptions(&self.api, easy, &pending);
         const code = self.api.easy_perform(easy);
         if (code != CURLE_OK) {
-            if (context.exhausted) {
+            if (context.timed_out) {
+                http.finish(pending.operation, http.failureResult(pending.allocator, .{ .category = .timeout, .native_code = code, .message = "first byte timeout" }));
+            } else if (context.exhausted) {
                 http.finish(pending.operation, http.failureResult(pending.allocator, .{ .category = .resource_exhausted, .native_code = code, .message = "response limit or allocation exhausted" }));
             } else {
                 http.finish(pending.operation, resultForCode(pending.allocator, code, token.isCancelled()));
@@ -191,7 +198,7 @@ pub const CurlClient = struct {
         }
         var status: c_long = 0;
         _ = self.api.easy_getinfo(easy, CURLINFO_RESPONSE_CODE, &status);
-        const body = foundation.memory.SharedBuffer.initCopy(pending.allocator, response.items, .network) catch {
+        const body = foundation.memory.SharedBuffer.initCopy(pending.allocator, if (pending.stream == null) response.items else "", .network) catch {
             http.finish(pending.operation, http.failureResult(pending.allocator, .{ .category = .resource_exhausted, .message = "response allocation failed" }));
             return;
         };
@@ -203,7 +210,7 @@ pub const CurlClient = struct {
         };
         http.finish(pending.operation, .{ .response = .{ .status = @intCast(@max(status, 0)), .headers = owned_headers, .body = body, .allocator = pending.allocator } });
     }
-    fn start(raw: ?*anyopaque, allocator: std.mem.Allocator, request: http.Request, options: http.Options, completion: http.Completion, userdata: ?*anyopaque) http.StartError!*http.HttpOperation {
+    fn start(raw: ?*anyopaque, allocator: std.mem.Allocator, request: http.Request, options: http.Options, stream: ?http.Stream, completion: http.Completion, userdata: ?*anyopaque) http.StartError!*http.HttpOperation {
         const self: *CurlClient = @ptrCast(@alignCast(raw.?));
         const header_lines = try copyHeaders(allocator, request.headers);
         errdefer freeHeaders(allocator, header_lines);
@@ -211,7 +218,7 @@ pub const CurlClient = struct {
         errdefer allocator.free(url);
         const body = try allocator.dupe(u8, request.body);
         errdefer allocator.free(body);
-        var pending = Pending{ .allocator = allocator, .operation = undefined, .url = url, .method = methodName(request.method), .body = body, .headers = header_lines, .options = options };
+        var pending = Pending{ .allocator = allocator, .operation = undefined, .url = url, .method = methodName(request.method), .body = body, .headers = header_lines, .options = options, .stream = stream };
         if (options.tls.ca_bundle_path) |value| pending.ca_bundle_path = try allocator.dupeZ(u8, value);
         errdefer if (pending.ca_bundle_path) |value| allocator.free(value);
         if (options.tls.client_certificate_path) |value| pending.client_certificate_path = try allocator.dupeZ(u8, value);
@@ -259,14 +266,36 @@ fn methodName(method: http.Method) [:0]const u8 {
     };
 }
 
-const CallbackContext = struct { allocator: std.mem.Allocator, response: *std.ArrayListUnmanaged(u8), headers: *std.ArrayListUnmanaged(http.Header), limit: usize, cancelled: *foundation.cancellation.Token, exhausted: bool = false };
+const CallbackContext = struct {
+    allocator: std.mem.Allocator,
+    response: *std.ArrayListUnmanaged(u8),
+    headers: *std.ArrayListUnmanaged(http.Header),
+    limit: usize,
+    cancelled: *foundation.cancellation.Token,
+    stream: ?http.Stream,
+    received: usize = 0,
+    started_ns: u64,
+    first_byte_timeout_ns: u64,
+    first_byte_seen: bool = false,
+    timed_out: bool = false,
+    exhausted: bool = false,
+};
 fn writeCallback(bytes: [*]u8, size: usize, count: usize, raw: ?*anyopaque) callconv(.c) usize {
     const context: *CallbackContext = @ptrCast(@alignCast(raw.?));
     const len = size *| count;
     if (context.cancelled.isCancelled()) return 0;
-    if (len > context.limit -| context.response.items.len) {
+    context.first_byte_seen = true;
+    if (len > context.limit -| context.received) {
         context.exhausted = true;
         return 0;
+    }
+    context.received += len;
+    if (context.stream) |stream| {
+        stream.callback(stream.context, bytes[0..len]) catch {
+            context.exhausted = true;
+            return 0;
+        };
+        return len;
     }
     context.response.appendSlice(context.allocator, bytes[0..len]) catch {
         context.exhausted = true;
@@ -277,6 +306,7 @@ fn writeCallback(bytes: [*]u8, size: usize, count: usize, raw: ?*anyopaque) call
 fn headerCallback(bytes: [*]u8, size: usize, count: usize, raw: ?*anyopaque) callconv(.c) usize {
     const context: *CallbackContext = @ptrCast(@alignCast(raw.?));
     const len = size *| count;
+    if (len != 0) context.first_byte_seen = true;
     const line = std.mem.trim(u8, bytes[0..len], "\r\n");
     if (std.mem.startsWith(u8, line, "HTTP/")) {
         freeResponseHeaders(context.allocator, context.headers);
@@ -300,6 +330,18 @@ fn headerCallback(bytes: [*]u8, size: usize, count: usize, raw: ?*anyopaque) cal
         return 0;
     };
     return len;
+}
+fn progressCallback(raw: ?*anyopaque, _: i64, _: i64, _: i64, _: i64) callconv(.c) c_int {
+    const context: *CallbackContext = @ptrCast(@alignCast(raw.?));
+    if (context.cancelled.isCancelled()) return 1;
+    if (!context.first_byte_seen and context.first_byte_timeout_ns != 0 and monotonicNow() -| context.started_ns >= context.first_byte_timeout_ns) {
+        context.timed_out = true;
+        return 1;
+    }
+    return 0;
+}
+fn monotonicNow() u64 {
+    return @intCast(@max(0, std.Io.Clock.Timestamp.now(std.Options.debug_io, .awake).raw.nanoseconds));
 }
 fn freeResponseHeaders(allocator: std.mem.Allocator, headers: *std.ArrayListUnmanaged(http.Header)) void {
     for (headers.items) |header| {

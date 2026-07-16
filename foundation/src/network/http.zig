@@ -18,6 +18,8 @@ pub const TlsConfig = struct {
     client_key_path: ?[]const u8 = null,
 };
 pub const Options = struct {
+    connect_timeout_ms: u64 = 10_000,
+    first_byte_timeout_ms: u64 = 10_000,
     timeout_ms: u64 = 30_000,
     response_body_limit: usize = 16 * 1024 * 1024,
     redirects: RedirectPolicy = .deny,
@@ -26,6 +28,11 @@ pub const Options = struct {
     executor: executor.Executor,
     cancellation_token: ?cancellation.Token = null,
 };
+pub const StreamError = error{ Backpressure, InvalidData, ResourceExhausted };
+/// Receives response-body chunks while the transport is active. The bytes are
+/// borrowed only for the callback. Returning an error aborts the transfer.
+pub const StreamCallback = *const fn (?*anyopaque, []const u8) StreamError!void;
+pub const Stream = struct { callback: StreamCallback, context: ?*anyopaque = null };
 pub const Request = struct {
     url: []const u8,
     method: Method = .get,
@@ -150,14 +157,22 @@ pub fn abandon(operation: *HttpOperation) void {
 }
 
 pub const StartError = error{ InvalidArgument, OutOfMemory, Unavailable };
-pub const VTable = struct { start: *const fn (?*anyopaque, std.mem.Allocator, Request, Options, Completion, ?*anyopaque) StartError!*HttpOperation };
+pub const VTable = struct {
+    start: *const fn (?*anyopaque, std.mem.Allocator, Request, Options, ?Stream, Completion, ?*anyopaque) StartError!*HttpOperation,
+};
 /// Borrowed backend facade. The backend outlives all operations it returns.
 pub const HttpClient = struct {
     context: ?*anyopaque,
     vtable: *const VTable,
     pub fn start(self: HttpClient, allocator: std.mem.Allocator, request: Request, options: Options, completion: Completion, userdata: ?*anyopaque) StartError!*HttpOperation {
         if (request.url.len == 0 or options.response_body_limit == 0) return error.InvalidArgument;
-        return self.vtable.start(self.context, allocator, request, options, completion, userdata);
+        return self.vtable.start(self.context, allocator, request, options, null, completion, userdata);
+    }
+    /// Starts a bounded streaming response. The terminal completion contains
+    /// status and headers with an empty body after all chunks were delivered.
+    pub fn startStream(self: HttpClient, allocator: std.mem.Allocator, request: Request, options: Options, stream: Stream, completion: Completion, userdata: ?*anyopaque) StartError!*HttpOperation {
+        if (request.url.len == 0 or options.response_body_limit == 0) return error.InvalidArgument;
+        return self.vtable.start(self.context, allocator, request, options, stream, completion, userdata);
     }
 };
 
@@ -207,15 +222,16 @@ pub fn finish(operation: *HttpOperation, result: Result) void {
 /// Deterministic host-pumped HTTP backend. `pump` emits one scripted outcome
 /// per call, never directly invoking the business completion callback.
 pub const MockClient = struct {
-    pub const Script = union(enum) { response: struct { status: u16 = 200, body: []const u8, native_code: i64 = 0 }, failure: errors.ErrorInfo, pending };
+    pub const Script = union(enum) { response: struct { status: u16 = 200, body: []const u8, native_code: i64 = 0 }, chunk: []const u8, failure: errors.ErrorInfo, pending };
+    const Pending = struct { operation: *HttpOperation, stream: ?Stream = null };
     allocator: std.mem.Allocator,
     scripts: std.ArrayListUnmanaged(Script) = .empty,
-    pending: std.ArrayListUnmanaged(*HttpOperation) = .empty,
+    pending: std.ArrayListUnmanaged(Pending) = .empty,
     pub fn init(allocator: std.mem.Allocator) MockClient {
         return .{ .allocator = allocator };
     }
     pub fn deinit(self: *MockClient) void {
-        for (self.pending.items) |operation| operation.release();
+        for (self.pending.items) |pending| pending.operation.release();
         self.scripts.deinit(self.allocator);
         self.pending.deinit(self.allocator);
         self.* = undefined;
@@ -228,7 +244,8 @@ pub const MockClient = struct {
     }
     pub fn pump(self: *MockClient) void {
         if (self.pending.items.len == 0) return;
-        const operation = self.pending.orderedRemove(0);
+        const pending = self.pending.orderedRemove(0);
+        const operation = pending.operation;
         var token = operation.token();
         defer token.deinit();
         if (token.isCancelled()) {
@@ -237,14 +254,31 @@ pub const MockClient = struct {
         }
         const script = if (self.scripts.items.len == 0) Script{ .failure = .{ .category = .unavailable, .message = "mock script exhausted" } } else self.scripts.orderedRemove(0);
         switch (script) {
-            .pending => tryAppendPending(self, operation),
+            .pending => tryAppendPending(self, pending),
+            .chunk => |bytes| {
+                const stream = pending.stream orelse {
+                    finish(operation, failureResult(operation.allocator, .{ .category = .invalid_argument, .message = "chunk script requires a streaming request" }));
+                    return;
+                };
+                stream.callback(stream.context, bytes) catch {
+                    finish(operation, failureResult(operation.allocator, .{ .category = .resource_exhausted, .message = "stream consumer rejected response data" }));
+                    return;
+                };
+                tryAppendPending(self, pending);
+            },
             .failure => |failure| finish(operation, failureResult(operation.allocator, failure)),
             .response => |response| {
                 if (response.body.len > operation.response_body_limit) {
                     finish(operation, failureResult(operation.allocator, .{ .category = .resource_exhausted, .native_code = response.native_code, .message = "response body limit exceeded" }));
                     return;
                 }
-                const body = memory.SharedBuffer.initCopy(operation.allocator, response.body, .network) catch {
+                if (pending.stream) |stream| {
+                    stream.callback(stream.context, response.body) catch {
+                        finish(operation, failureResult(operation.allocator, .{ .category = .resource_exhausted, .message = "stream consumer rejected response data" }));
+                        return;
+                    };
+                }
+                const body = memory.SharedBuffer.initCopy(operation.allocator, if (pending.stream == null) response.body else "", .network) catch {
                     finish(operation, failureResult(operation.allocator, .{ .category = .resource_exhausted, .message = "response allocation failed" }));
                     return;
                 };
@@ -252,13 +286,13 @@ pub const MockClient = struct {
             },
         }
     }
-    fn tryAppendPending(self: *MockClient, operation: *HttpOperation) void {
-        self.pending.append(self.allocator, operation) catch finish(operation, failureResult(operation.allocator, .{ .category = .resource_exhausted, .message = "mock queue allocation failed" }));
+    fn tryAppendPending(self: *MockClient, pending: Pending) void {
+        self.pending.append(self.allocator, pending) catch finish(pending.operation, failureResult(pending.operation.allocator, .{ .category = .resource_exhausted, .message = "mock queue allocation failed" }));
     }
-    fn start(context: ?*anyopaque, allocator: std.mem.Allocator, _: Request, options: Options, completion: Completion, userdata: ?*anyopaque) StartError!*HttpOperation {
+    fn start(context: ?*anyopaque, allocator: std.mem.Allocator, _: Request, options: Options, stream: ?Stream, completion: Completion, userdata: ?*anyopaque) StartError!*HttpOperation {
         const self: *MockClient = @ptrCast(@alignCast(context.?));
         const operation = try createOperation(allocator, options, completion, userdata);
-        self.pending.append(self.allocator, operation) catch {
+        self.pending.append(self.allocator, .{ .operation = operation, .stream = stream }) catch {
             abandon(operation);
             return error.OutOfMemory;
         };
@@ -315,6 +349,44 @@ test "mock cancellation delivers cancelled on selected executor" {
     mock.pump();
     _ = queue.pump();
     try std.testing.expectEqual(@as(usize, 1), probe.calls);
+}
+
+test "mock streaming delivers borrowed chunks before one terminal completion" {
+    const Probe = struct {
+        chunks: std.ArrayListUnmanaged(u8) = .empty,
+        terminals: usize = 0,
+        fn chunk(raw: ?*anyopaque, bytes: []const u8) StreamError!void {
+            const self: *@This() = @ptrCast(@alignCast(raw.?));
+            self.chunks.appendSlice(std.testing.allocator, bytes) catch return error.ResourceExhausted;
+        }
+        fn done(raw: ?*anyopaque, result: Result) void {
+            const self: *@This() = @ptrCast(@alignCast(raw.?));
+            var owned = result;
+            defer owned.deinit();
+            self.terminals += 1;
+            switch (owned) {
+                .response => |response| {
+                    const bytes = response.body.bytes() catch @panic("stream response body unavailable");
+                    std.testing.expectEqual(@as(usize, 0), bytes.len) catch @panic("stream response retained a body");
+                },
+                else => @panic("unexpected stream terminal"),
+            }
+        }
+    };
+    var mock = MockClient.init(std.testing.allocator);
+    defer mock.deinit();
+    try mock.append(.{ .response = .{ .body = "data: one\n\ndata: two\n\n" } });
+    var queue = executor.TestExecutor.init(std.testing.allocator);
+    defer queue.deinit();
+    var probe = Probe{};
+    defer probe.chunks.deinit(std.testing.allocator);
+    const operation = try mock.client().startStream(std.testing.allocator, .{ .url = "https://fixture" }, .{ .executor = queue.executor() }, .{ .callback = Probe.chunk, .context = &probe }, Probe.done, &probe);
+    defer operation.deinit();
+    mock.pump();
+    try std.testing.expectEqualStrings("data: one\n\ndata: two\n\n", probe.chunks.items);
+    try std.testing.expectEqual(@as(usize, 0), probe.terminals);
+    _ = queue.pump();
+    try std.testing.expectEqual(@as(usize, 1), probe.terminals);
 }
 
 test "completion owns result and teardown drops queued delivery" {
