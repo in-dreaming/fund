@@ -65,14 +65,14 @@ pub const CancellationSource = struct {
             state: *State,
             fn propagate(userdata: ?*anyopaque, reason: CancelReason) void {
                 const state: *State = @ptrCast(@alignCast(userdata.?));
-                cancelState(state, reason);
+                _ = cancelState(state, reason);
             }
         };
         const child_state = child.state.?;
         child_state.retain(); // Held while the parent callback may reference this state.
         child.parent_registration = try parent.register(ChildLink.propagate, child_state);
         child.parent_child_state = child_state;
-        if (parent.isCancelled()) child.cancel(parent.reason().?);
+        if (parent.isCancelled()) _ = child.cancel(parent.reason().?);
         return child;
     }
 
