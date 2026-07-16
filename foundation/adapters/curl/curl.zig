@@ -173,7 +173,7 @@ pub const CurlClient = struct {
         defer response.deinit(pending.allocator);
         var response_headers: std.ArrayListUnmanaged(http.Header) = .empty;
         defer freeResponseHeaders(pending.allocator, &response_headers);
-        var context = CallbackContext{ .allocator = pending.allocator, .response = &response, .headers = &response_headers, .limit = pending.options.response_body_limit, .cancelled = &token, .stream = pending.stream, .started_ns = monotonicNow(), .first_byte_timeout_ns = pending.options.first_byte_timeout_ms *| std.time.ns_per_ms };
+        var context = CallbackContext{ .allocator = pending.allocator, .response = &response, .headers = &response_headers, .limit = pending.options.response_body_limit, .cancelled = &token, .stream = pending.stream, .api = &self.api, .easy = easy, .started_ns = monotonicNow(), .first_byte_timeout_ns = pending.options.first_byte_timeout_ms *| std.time.ns_per_ms };
         if (!set(self.api.easy_setopt(easy, CURLOPT_URL, pending.url.ptr)) or !set(self.api.easy_setopt(easy, CURLOPT_CUSTOMREQUEST, pending.method.ptr)) or !set(self.api.easy_setopt(easy, CURLOPT_NOSIGNAL, @as(c_long, 1))) or !set(self.api.easy_setopt(easy, CURLOPT_CONNECTTIMEOUT_MS, @as(c_long, @intCast(@min(pending.options.connect_timeout_ms, std.math.maxInt(c_long)))))) or !set(self.api.easy_setopt(easy, CURLOPT_TIMEOUT_MS, @as(c_long, @intCast(@min(pending.options.timeout_ms, std.math.maxInt(c_long)))))) or !set(self.api.easy_setopt(easy, CURLOPT_NOPROGRESS, @as(c_long, 0))) or !set(self.api.easy_setopt(easy, CURLOPT_XFERINFOFUNCTION, progressCallback)) or !set(self.api.easy_setopt(easy, CURLOPT_XFERINFODATA, &context)) or !set(self.api.easy_setopt(easy, CURLOPT_WRITEFUNCTION, writeCallback)) or !set(self.api.easy_setopt(easy, CURLOPT_WRITEDATA, &context)) or !set(self.api.easy_setopt(easy, CURLOPT_HEADERFUNCTION, headerCallback)) or !set(self.api.easy_setopt(easy, CURLOPT_HEADERDATA, &context))) {
             http.finish(pending.operation, http.failureResult(pending.allocator, .{ .category = .internal, .message = "curl option setup failed" }));
             return;
@@ -198,6 +198,10 @@ pub const CurlClient = struct {
         }
         var status: c_long = 0;
         _ = self.api.easy_getinfo(easy, CURLINFO_RESPONSE_CODE, &status);
+        if (!publishHead(&context)) {
+            http.finish(pending.operation, http.failureResult(pending.allocator, .{ .category = .resource_exhausted, .message = "stream consumer rejected response head" }));
+            return;
+        }
         const body = foundation.memory.SharedBuffer.initCopy(pending.allocator, if (pending.stream == null) response.items else "", .network) catch {
             http.finish(pending.operation, http.failureResult(pending.allocator, .{ .category = .resource_exhausted, .message = "response allocation failed" }));
             return;
@@ -273,6 +277,9 @@ const CallbackContext = struct {
     limit: usize,
     cancelled: *foundation.cancellation.Token,
     stream: ?http.Stream,
+    api: *Api,
+    easy: CURL,
+    head_emitted: bool = false,
     received: usize = 0,
     started_ns: u64,
     first_byte_timeout_ns: u64,
@@ -291,6 +298,10 @@ fn writeCallback(bytes: [*]u8, size: usize, count: usize, raw: ?*anyopaque) call
     }
     context.received += len;
     if (context.stream) |stream| {
+        if (!publishHead(context)) {
+            context.exhausted = true;
+            return 0;
+        }
         stream.callback(stream.context, bytes[0..len]) catch {
             context.exhausted = true;
             return 0;
@@ -302,6 +313,14 @@ fn writeCallback(bytes: [*]u8, size: usize, count: usize, raw: ?*anyopaque) call
         return 0;
     };
     return len;
+}
+fn publishHead(context: *CallbackContext) bool {
+    if (context.head_emitted) return true;
+    var status: c_long = 0;
+    if (context.api.easy_getinfo(context.easy, CURLINFO_RESPONSE_CODE, &status) != CURLE_OK or status < 0 or status > std.math.maxInt(u16)) return false;
+    if (context.stream) |stream| if (stream.head) |callback| callback(stream.context, .{ .status = @intCast(status) }) catch return false;
+    context.head_emitted = true;
+    return true;
 }
 fn headerCallback(bytes: [*]u8, size: usize, count: usize, raw: ?*anyopaque) callconv(.c) usize {
     const context: *CallbackContext = @ptrCast(@alignCast(raw.?));

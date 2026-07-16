@@ -29,10 +29,18 @@ pub const Options = struct {
     cancellation_token: ?cancellation.Token = null,
 };
 pub const StreamError = error{ Backpressure, InvalidData, ResourceExhausted };
+pub const ResponseHead = struct { status: u16 };
+pub const HeadCallback = *const fn (?*anyopaque, ResponseHead) StreamError!void;
 /// Receives response-body chunks while the transport is active. The bytes are
 /// borrowed only for the callback. Returning an error aborts the transfer.
 pub const StreamCallback = *const fn (?*anyopaque, []const u8) StreamError!void;
-pub const Stream = struct { callback: StreamCallback, context: ?*anyopaque = null };
+pub const Stream = struct {
+    callback: StreamCallback,
+    context: ?*anyopaque = null,
+    /// Delivered exactly once before the first body chunk, including for
+    /// responses with an empty body.
+    head: ?HeadCallback = null,
+};
 pub const Request = struct {
     url: []const u8,
     method: Method = .get,
@@ -223,7 +231,7 @@ pub fn finish(operation: *HttpOperation, result: Result) void {
 /// per call, never directly invoking the business completion callback.
 pub const MockClient = struct {
     pub const Script = union(enum) { response: struct { status: u16 = 200, body: []const u8, native_code: i64 = 0 }, chunk: []const u8, failure: errors.ErrorInfo, pending };
-    const Pending = struct { operation: *HttpOperation, stream: ?Stream = null };
+    const Pending = struct { operation: *HttpOperation, stream: ?Stream = null, head_emitted: bool = false, status: u16 = 0 };
     allocator: std.mem.Allocator,
     scripts: std.ArrayListUnmanaged(Script) = .empty,
     pending: std.ArrayListUnmanaged(Pending) = .empty,
@@ -256,15 +264,17 @@ pub const MockClient = struct {
         switch (script) {
             .pending => tryAppendPending(self, pending),
             .chunk => |bytes| {
-                const stream = pending.stream orelse {
+                var current = pending;
+                const stream = current.stream orelse {
                     finish(operation, failureResult(operation.allocator, .{ .category = .invalid_argument, .message = "chunk script requires a streaming request" }));
                     return;
                 };
+                if (!emitHead(&current, 200)) return;
                 stream.callback(stream.context, bytes) catch {
                     finish(operation, failureResult(operation.allocator, .{ .category = .resource_exhausted, .message = "stream consumer rejected response data" }));
                     return;
                 };
-                tryAppendPending(self, pending);
+                tryAppendPending(self, current);
             },
             .failure => |failure| finish(operation, failureResult(operation.allocator, failure)),
             .response => |response| {
@@ -272,7 +282,9 @@ pub const MockClient = struct {
                     finish(operation, failureResult(operation.allocator, .{ .category = .resource_exhausted, .native_code = response.native_code, .message = "response body limit exceeded" }));
                     return;
                 }
-                if (pending.stream) |stream| {
+                var current = pending;
+                if (current.stream) |stream| {
+                    if (!emitHead(&current, response.status)) return;
                     stream.callback(stream.context, response.body) catch {
                         finish(operation, failureResult(operation.allocator, .{ .category = .resource_exhausted, .message = "stream consumer rejected response data" }));
                         return;
@@ -288,6 +300,22 @@ pub const MockClient = struct {
     }
     fn tryAppendPending(self: *MockClient, pending: Pending) void {
         self.pending.append(self.allocator, pending) catch finish(pending.operation, failureResult(pending.operation.allocator, .{ .category = .resource_exhausted, .message = "mock queue allocation failed" }));
+    }
+    fn emitHead(pending: *Pending, status: u16) bool {
+        if (pending.head_emitted) {
+            if (pending.status == status) return true;
+            finish(pending.operation, failureResult(pending.operation.allocator, .{ .category = .protocol, .message = "stream response status changed after body delivery" }));
+            return false;
+        }
+        pending.head_emitted = true;
+        pending.status = status;
+        const stream = pending.stream orelse return true;
+        const callback = stream.head orelse return true;
+        callback(stream.context, .{ .status = status }) catch {
+            finish(pending.operation, failureResult(pending.operation.allocator, .{ .category = .resource_exhausted, .message = "stream consumer rejected response head" }));
+            return false;
+        };
+        return true;
     }
     fn start(context: ?*anyopaque, allocator: std.mem.Allocator, _: Request, options: Options, stream: ?Stream, completion: Completion, userdata: ?*anyopaque) StartError!*HttpOperation {
         const self: *MockClient = @ptrCast(@alignCast(context.?));
@@ -355,8 +383,15 @@ test "mock streaming delivers borrowed chunks before one terminal completion" {
     const Probe = struct {
         chunks: std.ArrayListUnmanaged(u8) = .empty,
         terminals: usize = 0,
+        head_seen: bool = false,
+        fn head(raw: ?*anyopaque, value: ResponseHead) StreamError!void {
+            const self: *@This() = @ptrCast(@alignCast(raw.?));
+            if (self.head_seen or value.status != 200) return error.InvalidData;
+            self.head_seen = true;
+        }
         fn chunk(raw: ?*anyopaque, bytes: []const u8) StreamError!void {
             const self: *@This() = @ptrCast(@alignCast(raw.?));
+            if (!self.head_seen) return error.InvalidData;
             self.chunks.appendSlice(std.testing.allocator, bytes) catch return error.ResourceExhausted;
         }
         fn done(raw: ?*anyopaque, result: Result) void {
@@ -380,10 +415,11 @@ test "mock streaming delivers borrowed chunks before one terminal completion" {
     defer queue.deinit();
     var probe = Probe{};
     defer probe.chunks.deinit(std.testing.allocator);
-    const operation = try mock.client().startStream(std.testing.allocator, .{ .url = "https://fixture" }, .{ .executor = queue.executor() }, .{ .callback = Probe.chunk, .context = &probe }, Probe.done, &probe);
+    const operation = try mock.client().startStream(std.testing.allocator, .{ .url = "https://fixture" }, .{ .executor = queue.executor() }, .{ .callback = Probe.chunk, .context = &probe, .head = Probe.head }, Probe.done, &probe);
     defer operation.deinit();
     mock.pump();
     try std.testing.expectEqualStrings("data: one\n\ndata: two\n\n", probe.chunks.items);
+    try std.testing.expect(probe.head_seen);
     try std.testing.expectEqual(@as(usize, 0), probe.terminals);
     _ = queue.pump();
     try std.testing.expectEqual(@as(usize, 1), probe.terminals);
